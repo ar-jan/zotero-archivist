@@ -154,9 +154,14 @@ async function getSelectorRules() {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.SELECTOR_RULES);
   const rawRules = stored[STORAGE_KEYS.SELECTOR_RULES];
   const sanitizedRules = sanitizeSelectorRules(rawRules);
+  const defaults = DEFAULT_SELECTOR_RULES.map((rule) => ({ ...rule }));
 
   if (sanitizedRules.length === 0) {
-    const defaults = DEFAULT_SELECTOR_RULES.map((rule) => ({ ...rule }));
+    await chrome.storage.local.set({ [STORAGE_KEYS.SELECTOR_RULES]: defaults });
+    return defaults;
+  }
+
+  if (isLegacyAnchorOnlyDefault(sanitizedRules)) {
     await chrome.storage.local.set({ [STORAGE_KEYS.SELECTOR_RULES]: defaults });
     return defaults;
   }
@@ -260,4 +265,24 @@ function normalizeCollectedLinks(input) {
   }
 
   return normalized;
+}
+
+function isLegacyAnchorOnlyDefault(rules) {
+  if (!Array.isArray(rules) || rules.length !== 1) {
+    return false;
+  }
+
+  const rule = rules[0];
+  if (!rule || typeof rule !== "object") {
+    return false;
+  }
+
+  const normalizedName = typeof rule.name === "string" ? rule.name.trim().toLowerCase() : "";
+  return (
+    rule.id === "anchors" &&
+    rule.cssSelector === "a[href]" &&
+    rule.urlAttribute === "href" &&
+    rule.enabled === true &&
+    (normalizedName === "all anchor links" || normalizedName === "anchors")
+  );
 }

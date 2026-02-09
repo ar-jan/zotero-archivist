@@ -22,11 +22,18 @@ export const ERROR_CODES = Object.freeze({
 
 export const DEFAULT_SELECTOR_RULES = Object.freeze([
   Object.freeze({
+    id: "substack-posts",
+    name: "Substack posts",
+    cssSelector: 'a[data-testid="post-preview-title"]',
+    urlAttribute: "href",
+    enabled: true
+  }),
+  Object.freeze({
     id: "anchors",
     name: "All anchor links",
     cssSelector: "a[href]",
     urlAttribute: "href",
-    enabled: true
+    enabled: false
   })
 ]);
 
