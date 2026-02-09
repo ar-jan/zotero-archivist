@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Zotero Archivist</title>
+    <link rel="stylesheet" href="panel.css">
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel-header">
+        <h1>Zotero Archivist</h1>
+        <p id="rules-summary" class="rules-summary"></p>
+      </header>
+
+      <section class="controls">
+        <button id="collect-links-button" type="button">Collect Links</button>
+        <p id="status" class="status" role="status"></p>
+      </section>
+
+      <section class="results" aria-live="polite">
+        <h2 id="results-title">Collected Links (0)</h2>
+        <ul id="results-list" class="results-list"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

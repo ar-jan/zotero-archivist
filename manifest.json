@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Zotero Archivist",
+  "description": "Collect links from the active page for Zotero archival workflows.",
+  "version": "0.0.1",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "sidePanel"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Zotero Archivist"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/panel.html"
+  }
+}
