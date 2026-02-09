@@ -43,6 +43,8 @@ async function handleMessage(message, _sender) {
       return createSuccess(await getPanelState());
     case MESSAGE_TYPES.COLLECT_LINKS:
       return collectLinksFromActiveTab();
+    case MESSAGE_TYPES.SET_SELECTOR_RULES:
+      return setSelectorRules(message.payload?.rules);
     default:
       return createError(ERROR_CODES.BAD_REQUEST, `Unsupported message type: ${message.type}`);
   }
@@ -167,6 +169,35 @@ async function getSelectorRules() {
   }
 
   return sanitizedRules;
+}
+
+async function setSelectorRules(rawRules) {
+  if (!Array.isArray(rawRules) || rawRules.length === 0) {
+    return createError(
+      ERROR_CODES.INVALID_SELECTOR_RULES,
+      "At least one selector rule is required."
+    );
+  }
+
+  const sanitizedRules = sanitizeSelectorRules(rawRules);
+  if (sanitizedRules.length !== rawRules.length || sanitizedRules.length === 0) {
+    return createError(
+      ERROR_CODES.INVALID_SELECTOR_RULES,
+      "One or more selector rules are invalid.",
+      {
+        submittedCount: rawRules.length,
+        validCount: sanitizedRules.length
+      }
+    );
+  }
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.SELECTOR_RULES]: sanitizedRules
+  });
+
+  return createSuccess({
+    selectorRules: sanitizedRules
+  });
 }
 
 async function ensureSelectorRules() {

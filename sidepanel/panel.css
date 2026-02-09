@@ -27,6 +27,112 @@ body {
   font-size: 0.88rem;
 }
 
+.selectors {
+  border-top: 1px solid #ddd;
+  padding-top: 10px;
+}
+
+.selectors h2 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.selector-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  max-height: 300px;
+  overflow: auto;
+  padding: 0;
+}
+
+.selector-rule-item {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.rule-top-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.rule-toggle {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.rule-delete-button {
+  border: 1px solid #b33a3a;
+  border-radius: 6px;
+  background: #fff;
+  color: #b33a3a;
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 4px 8px;
+}
+
+.rule-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.rule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rule-field-label {
+  color: #444;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.rule-field-input {
+  border: 1px solid #c8c8c8;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  padding: 6px 8px;
+}
+
+.selector-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#add-rule-button,
+#save-rules-button {
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+}
+
+#add-rule-button {
+  border: 1px solid #666;
+  background: #fff;
+  color: #333;
+}
+
+#save-rules-button {
+  border: 1px solid #0a66c2;
+  background: #0a66c2;
+  color: #fff;
+}
+
+#save-rules-button[disabled] {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .controls {
   display: flex;
   align-items: center;

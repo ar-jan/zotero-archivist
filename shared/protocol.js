@@ -1,6 +1,7 @@
 export const MESSAGE_TYPES = Object.freeze({
   GET_PANEL_STATE: "GET_PANEL_STATE",
   COLLECT_LINKS: "COLLECT_LINKS",
+  SET_SELECTOR_RULES: "SET_SELECTOR_RULES",
   RUN_COLLECTOR: "RUN_COLLECTOR"
 });
 
@@ -11,6 +12,7 @@ export const STORAGE_KEYS = Object.freeze({
 
 export const ERROR_CODES = Object.freeze({
   BAD_REQUEST: "BAD_REQUEST",
+  INVALID_SELECTOR_RULES: "INVALID_SELECTOR_RULES",
   NO_ACTIVE_TAB: "NO_ACTIVE_TAB",
   UNSUPPORTED_URL: "UNSUPPORTED_URL",
   MISSING_HOST_PERMISSION: "MISSING_HOST_PERMISSION",
@@ -52,22 +54,29 @@ export function sanitizeSelectorRules(input) {
   }
 
   const sanitizedRules = [];
+  const seenIds = new Set();
   for (const rule of input) {
     if (!rule || typeof rule !== "object") {
       continue;
     }
 
-    if (typeof rule.id !== "string" || rule.id.length === 0) {
+    if (typeof rule.id !== "string" || rule.id.trim().length === 0) {
       continue;
     }
+
+    const id = rule.id.trim();
+    if (seenIds.has(id)) {
+      continue;
+    }
+    seenIds.add(id);
 
     if (typeof rule.cssSelector !== "string" || rule.cssSelector.trim().length === 0) {
       continue;
     }
 
     const sanitizedRule = {
-      id: rule.id,
-      name: typeof rule.name === "string" && rule.name.trim().length > 0 ? rule.name : rule.id,
+      id,
+      name: typeof rule.name === "string" && rule.name.trim().length > 0 ? rule.name.trim() : id,
       cssSelector: rule.cssSelector.trim(),
       urlAttribute:
         typeof rule.urlAttribute === "string" && rule.urlAttribute.trim().length > 0
