@@ -1,262 +1,356 @@
-# Zotero Archivist: High-Level Architecture and Implementation Plan
+# Zotero Archivist: Modern Chromium Architecture and Implementation Plan
 
-## 1) Scope
+## 1) Re-evaluation Summary
 
-Build a Chromium extension that:
+1. Use native `chrome.sidePanel` as the primary UI surface.
+2. Keep content-script work on-demand, not always injected.
+3. Use least-privilege permissions and optional host access flow.
+4. Make queue orchestration resilient to MV3 service worker suspension.
+5. Isolate Zotero integration behind provider adapters with explicit fallback modes.
 
-1. Shows a side panel with user-customizable width.
-2. Collects links from the current page via configured CSS selectors.
-3. Lets users select/deselect links for archival.
-4. Opens selected URLs in a queue and archives each as **"Web Page with Snapshot"** via the installed Zotero Connector.
+## 2) Product Requirements
 
-This document is updated based on local analysis of `zotero-connectors/`.
+1. Side panel for workflow controls.
+2. User-customizable panel width.
+3. Collect URLs from page using configured selectors.
+4. Select/deselect collected links for archival queue.
+5. Archive each selected URL with **Save to Zotero (Web Page with Snapshot)** behavior.
 
-## 2) Connector Analysis Findings (from `zotero-connectors/`)
+## 3) Browser-Platform Decisions
 
-### 2.1 Save action mapping
+## 3.1 Side panel implementation
 
-1. The Zotero context-menu item **"Save to Zotero (Web Page with Snapshot)"** maps to:
-   - menu id `zotero-context-menu-webpage-withSnapshot-save`
-   - handler `Zotero.Connector_Browser.saveAsWebpage(tab, 0, { snapshot: true })`
+1. Primary: use Chrome/Chromium `chrome.sidePanel`.
+2. Width handling: native side panel is user-resizable by browser chrome; extension does not manage pixel width directly.
+3. No compatibility-mode in-page panel; `chrome.sidePanel` is the only supported UI surface.
+
+## 3.2 MV3 runtime model
+
+1. Background logic runs in a service worker and must be restart-safe.
+2. Long-running queue operations are modeled as resumable state transitions.
+3. No assumptions of in-memory persistence across worker sleeps.
+
+## 4) Zotero Connector Reality Check (from local `zotero-connectors/`)
+
+1. The "Web Page with Snapshot" action maps to:
+   - `saveAsWebpage(tab, 0, { snapshot: true })`
    - source: `zotero-connectors/src/browserExt/background.js:692`
-2. `saveAsWebpage()` triggers message `"saveAsWebpage"` into Zotero's content script:
-   - source: `zotero-connectors/src/browserExt/background.js:1110`
-3. The content side handles this in `PageSaving.onSaveAsWebpage()`, then runs snapshot save flow:
-   - source: `zotero-connectors/src/common/inject/inject.jsx:116`
-   - source: `zotero-connectors/src/common/inject/pageSaving.js:627`
-   - source: `zotero-connectors/src/common/inject/pageSaving.js:370`
-
-### 2.2 No public cross-extension API
-
-1. Chromium manifest has no `externally_connectable` entry:
+2. There is no public external extension API:
+   - no `externally_connectable`
+   - no `onMessageExternal`
    - source: `zotero-connectors/src/browserExt/manifest-v3.json:1`
-2. Codebase does not register `runtime.onMessageExternal`/`onConnectExternal`.
-3. Result: there is no official stable API for another extension to request save actions directly.
-
-### 2.3 Internal bridge exists (undocumented)
-
-1. Zotero exposes a web-accessible iframe endpoint:
+3. There is an undocumented internal message bridge via web-accessible iframe:
    - `chromeMessageIframe/messageIframe.html`
    - source: `zotero-connectors/src/browserExt/manifest-v3.json:46`
-2. That iframe forwards `sendToBackground` requests to Zotero service worker via `postMessage({ type: "inject-message", args })`:
-   - source: `zotero-connectors/src/browserExt/chromeMessageIframe/messageIframe.js:39`
-3. The service worker accepts `inject-message` and calls `Zotero.Messaging.receiveMessage(...)`:
-   - source: `zotero-connectors/src/common/messaging.js:173`
+4. Conclusion: integration must treat connector internals as volatile and provide fallback.
 
-This internal bridge can be used by `zotero-archivist`, but it is not a documented public contract and may break across connector updates.
+## 5) Target Architecture
 
-### 2.4 Collection targeting limitations
+## 5.1 Components
 
-1. Snapshot save payload for `saveSnapshot` does not include explicit collection key in this flow:
-   - source: `zotero-connectors/src/common/inject/pageSaving.js:339`
-2. Connector reads current selected target from Zotero client (`getSelectedCollection`), but this code path does not expose a clean public "set collection and save" API for other extensions.
-3. Practical MVP assumption: user selects destination collection in Zotero client/connector; archivist uses that active target.
+1. `sidepanel/` app
+   - Selector rules UI
+   - Link review + selection
+   - Queue controls and status
+   - Integration diagnostics (connector detected, mode, last error)
 
-## 3) Proposed Architecture
+2. `background/service-worker.js`
+   - Queue state machine
+   - Tab lifecycle management
+   - Save provider orchestration
+   - Persistence + recovery
 
-## 3.1 Core components
+3. `content/collector.js` (on-demand)
+   - Injected only when collecting links
+   - Evaluates selector rules and returns normalized candidates
 
-1. `content/host.js`
-   - Injects side panel iframe and resize handle.
-   - Persists panel width in `chrome.storage.local`.
-   - Runs selector-based link collection on active page.
+4. `zotero/providers/*`
+   - `connectorBridgeProvider` (advanced/experimental)
+   - `manualProvider` (stable fallback)
+   - `localApiProvider` (future option)
 
-2. `panel/` UI
-   - Rule editor for selectors.
-   - Link list with select/deselect controls.
-   - Queue controls and per-item status.
+5. `shared/protocol.js`
+   - Message contracts between sidepanel, background, and content scripts
+   - Runtime schema validation
 
-3. `background/service-worker.js`
-   - Queue orchestrator and state machine.
-   - Opens URLs in tabs and coordinates archival attempts.
-   - Persists queue/runtime state for recovery.
-
-4. `connector/bridgeClient.js` (new)
-   - Connects to Zotero connector internal iframe bridge.
-   - Sends validated command envelopes to Zotero worker.
-   - Returns success/failure payloads to archivist background.
-
-5. `connector/adapter.js`
-   - High-level adapter with two modes:
-     - `bridge-snapshot` (primary)
-     - `manual-confirm` (fallback)
-
-## 3.2 Updated project structure
+## 5.2 Recommended structure
 
 ```txt
 zotero-archivist/
 ├── manifest.json
 ├── background/
-│   └── service-worker.js
-├── content/
-│   ├── host.js
-│   ├── collector.js
-│   └── connector-bridge-host.js
-├── panel/
+│   ├── service-worker.js
+│   ├── queue-engine.js
+│   └── tab-controller.js
+├── sidepanel/
 │   ├── panel.html
 │   ├── panel.css
 │   ├── panel.js
-│   └── state.js
-├── connector/
-│   ├── adapter.js
-│   ├── bridgeClient.js
+│   └── store.js
+├── content/
+│   └── collector.js
+├── zotero/
+│   ├── provider-interface.js
+│   ├── provider-connector-bridge.js
+│   ├── provider-manual.js
+│   └── provider-local-api.js
+├── shared/
 │   ├── protocol.js
-│   └── manualAdapter.js
+│   ├── schema.js
+│   └── urls.js
 └── docs/
     └── integration-notes.md
 ```
 
-## 4) Connector Bridge Design
+## 6) Permission and Manifest Best Practices
 
-## 4.1 Bridge handshake
+## 6.1 Manifest
 
-1. Discover Zotero connector extension ID:
-   - preferred: user-configured setting
-   - optional enhancement: `chrome.management` assisted lookup
-2. Inject hidden iframe:
-   - `chrome-extension://<zoteroExtensionId>/chromeMessageIframe/messageIframe.html`
-3. Create `MessageChannel` and send `"zoteroChannel"` handshake to iframe.
-4. Use established port as RPC transport.
+1. `manifest_version: 3`
+2. `action` for quick open + status icon
+3. `side_panel.default_path` for primary UI
+4. `background.service_worker` only; no persistent background page
 
-## 4.2 Primary command for snapshot save
+## 6.2 Permissions strategy (least privilege)
 
-Use Zotero message bus entry that returns completion response:
+1. Required:
+   - `storage`
+   - `tabs`
+   - `scripting`
+   - `sidePanel`
+2. Optional:
+   - `management` only if connector discovery by extension id is implemented
+3. Host permissions:
+   - prefer `optional_host_permissions`: `https://*/*`, `http://*/*`
+   - request at runtime when user starts collection/queue, not at install
 
-1. Call `Messaging.sendMessage` through bridge with target tab:
-   - message name: `"saveAsWebpage"`
-   - args: `[document.title, { snapshot: true, resave: true }]`
-   - target frame: `0`
-2. Why this route:
-   - invokes the same content-side save pipeline as connector UI save
-   - with `snapshot: true` explicitly set
-   - expected to resolve/reject based on save flow outcome
+## 6.3 What to avoid
 
-## 4.3 Preflight checks
+1. Avoid always-on `<all_urls>` content scripts.
+2. Avoid DOM-injected iframe sidebars as default UI.
+3. Avoid relying on service-worker memory for queue state.
 
-Before queue start:
-
-1. Verify bridge connectivity (iframe + channel alive).
-2. Verify Zotero connectivity via connector (`Connector.checkIsOnline`).
-3. Optionally read current target (`getSelectedCollection`) and show it in panel.
-
-## 5) Queue Workflow (Updated)
-
-Per selected URL:
-
-1. Open URL in inactive tab.
-2. Wait for page readiness.
-3. Ensure connector bridge initialized for that tab context.
-4. Execute save command with `{ snapshot: true, resave: true }`.
-5. On resolve: mark `archived`.
-6. On reject: mark `failed` with connector error.
-7. Close tab (configurable if user wants to inspect failures).
-
-Fallback behavior:
-
-1. If bridge is unavailable or command fails with incompatibility, switch item to `manual_required`.
-2. In manual mode, user opens tab and uses Zotero action/shortcut; archivist records manual confirmation.
-
-## 6) Data Model Updates
+## 7) Data Contracts
 
 ```ts
-type ConnectorConfig = {
-  mode: "bridge-snapshot" | "manual-confirm";
-  zoteroExtensionId: string;
-  enableManagementDiscovery: boolean;
+type SelectorRule = {
+  id: string;
+  name: string;
+  cssSelector: string;
+  urlAttribute: string; // default "href"
+  includePattern?: string;
+  excludePattern?: string;
+  enabled: boolean;
 };
 
-type ArchiveQueueItem = {
+type LinkCandidate = {
   id: string;
   url: string;
   title: string;
-  status:
-    | "pending"
-    | "opening"
-    | "bridge_init"
-    | "saving_snapshot"
-    | "archived"
-    | "manual_required"
-    | "failed";
+  sourceSelectorId: string;
+  selected: boolean;
+  dedupeKey: string;
+};
+
+type QueueItemStatus =
+  | "pending"
+  | "opening_tab"
+  | "saving_snapshot"
+  | "archived"
+  | "manual_required"
+  | "failed"
+  | "cancelled";
+
+type QueueItem = {
+  id: string;
+  url: string;
+  title: string;
+  status: QueueItemStatus;
   attempts: number;
-  error?: string;
+  lastError?: string;
   createdAt: number;
   updatedAt: number;
 };
+
+type SaveProviderMode = "connector_bridge" | "manual" | "local_api";
 ```
 
-## 7) Permissions Plan
+## 8) Queue Engine (MV3-safe)
 
-In `manifest.json` for `zotero-archivist`:
+Use a deterministic state machine with persisted checkpoints.
 
-1. Required:
-   - `permissions`: `storage`, `tabs`, `scripting`, `activeTab`
-   - `host_permissions`: `http://*/*`, `https://*/*`
-2. Optional:
-   - `management` (only if we implement automatic Zotero extension discovery)
+1. Store durable queue state in `chrome.storage.local`.
+2. Store transient execution pointers in `chrome.storage.session` when available.
+3. Use event-driven progression:
+   - `tabs.onUpdated` for load-complete
+   - explicit step commits per item
+4. Use `chrome.alarms` for watchdog/retry and recovery after worker suspend.
+5. Default concurrency = `1` for predictable Zotero behavior.
 
-## 8) Implementation Plan
+State transitions:
 
-### Phase 1: Baseline Extension Shell
+1. `pending -> opening_tab -> saving_snapshot -> archived`
+2. `saving_snapshot -> manual_required` on unsupported provider errors
+3. Any active state -> `failed` on terminal error/timeout
 
-1. Scaffold MV3 extension, panel injection, and width persistence.
-2. Deliverable: stable resizable side panel.
+## 9) URL Collection Flow
 
-### Phase 2: Selector Collection + Selection UI
+1. User clicks "Collect Links" in side panel.
+2. Background injects `content/collector.js` into active tab via `chrome.scripting.executeScript`.
+3. Collector applies enabled selector rules and returns normalized URLs.
+4. Background dedupes and sends candidates to side panel store.
+5. User curates selection and submits queue.
 
-1. Implement selector rules editor and link collector.
-2. Implement link curation UX (select all/none/invert/search).
-3. Deliverable: curated candidate set ready for queue.
+Collector best practices:
 
-### Phase 3: Zotero Bridge PoC
+1. Enforce protocol allowlist (`http`, `https`).
+2. Resolve relative URLs against `document.baseURI`.
+3. Cap max collected links per run (configurable safety limit).
+4. Return metadata only; no unnecessary DOM capture.
 
-1. Build `connector-bridge-host.js` handshake to Zotero message iframe.
-2. Implement bridge RPC transport + timeout/error handling.
-3. Validate:
-   - bridge connectivity
-   - `Connector.checkIsOnline`
-   - one-page `"saveAsWebpage"` with `{ snapshot: true }`
-4. Deliverable: verifiable end-to-end snapshot save via connector internals.
+## 10) Zotero Save Provider Strategy
 
-### Phase 4: Queue Integration
+Treat Zotero save path as a pluggable provider with capability checks.
 
-1. Integrate bridge adapter into queue state machine.
-2. Add retries and deterministic failure states.
-3. Persist queue/runtime for restart recovery.
-4. Deliverable: automated queued snapshot archiving.
+## 10.1 Provider interface
 
-### Phase 5: Fallback + Collection UX
+```ts
+interface ZoteroSaveProvider {
+  mode: SaveProviderMode;
+  checkHealth(): Promise<{ ok: boolean; details?: string }>;
+  saveWebPageWithSnapshot(input: { tabId: number; url: string; title?: string }): Promise<{
+    ok: boolean;
+    requiresManual?: boolean;
+    error?: string;
+  }>;
+}
+```
 
-1. Add robust fallback to `manual-confirm`.
-2. Show current Zotero target collection in sidebar before start.
-3. Warn when target collection cannot be programmatically guaranteed.
-4. Deliverable: predictable operator workflow even on unsupported pages.
+## 10.2 Provider order
 
-### Phase 6: Hardening
+1. `connector_bridge` (if explicitly enabled and health check passes)
+2. `manual`
+3. `local_api` (future; not in MVP)
 
-1. Add integration tests for queue transitions and bridge command execution.
-2. Add compatibility checks for connector updates (version probe + kill switch).
-3. Document operational runbook in `docs/integration-notes.md`.
-4. Deliverable: stable MVP with clear degradation behavior.
+## 10.3 Connector bridge provider (advanced)
 
-## 9) Risks and Mitigations
+1. Uses Zotero internal iframe bridge endpoint discovered in analysis.
+2. Sends save command equivalent to connector snapshot action.
+3. Guardrails:
+   - feature flag
+   - strict timeout
+   - compatibility/version probes
+   - automatic downgrade to manual provider
 
-1. **Undocumented bridge may change**
-   - Mitigation: capability probe + feature flag + manual fallback.
-2. **Page CSP or edge cases may block iframe bridge**
-   - Mitigation: per-item fallback to manual mode.
-3. **No first-class collection targeting API in this path**
-   - Mitigation: require user to set active Zotero target before run; show target in UI.
-4. **Licensing risk if copying connector code**
-   - Mitigation: implement bridge logic from browser APIs without vendoring connector source.
+## 10.4 Manual provider (required baseline)
 
-## 10) MVP Recommendation
+1. Opens target URL tab.
+2. Prompts user to use Zotero save action (or shortcut) for snapshot save.
+3. Captures user confirmation/failure and advances queue.
+4. Ensures system remains usable even if bridge path breaks.
 
-Ship MVP as:
+## 11) Side Panel UX Plan
 
-1. Resizable side panel.
-2. Selector-driven link collection and curation.
-3. Sequential queue.
-4. Primary archival mode: Zotero internal bridge -> `saveAsWebpage(..., { snapshot: true })`.
-5. Automatic fallback: manual-confirm for unsupported/failed bridge runs.
+1. Sections:
+   - Source selectors
+   - Collected links
+   - Queue
+   - Integration status
+2. Selection controls:
+   - select all
+   - clear all
+   - invert
+   - search/filter
+3. Queue controls:
+   - start
+   - pause
+   - resume
+   - stop
+   - retry failed
+4. Operational clarity:
+   - current mode (`connector_bridge` or `manual`)
+   - active Zotero detection state
+   - explicit warnings on degraded mode
 
-This gives the requested "Web Page with Snapshot" behavior while acknowledging connector API boundaries discovered in `zotero-connectors/`.
+## 12) Storage Plan
+
+1. `chrome.storage.sync`:
+   - selector rules
+   - UI preferences
+   - safe non-sensitive defaults
+2. `chrome.storage.local`:
+   - queue items
+   - queue history
+   - provider diagnostics
+3. `chrome.storage.session`:
+   - current run pointer
+   - in-progress tab IDs
+   - temporary retries
+
+## 13) Security and Privacy
+
+1. No remote code execution or dynamic script URLs.
+2. Validate all inbound/outbound message payloads.
+3. Do not persist full page content in archivist storage.
+4. Minimize retained data (URLs/titles/status only).
+5. Redact sensitive query params in logs/UI where appropriate.
+
+## 14) Testing Strategy
+
+1. Unit tests:
+   - selector filtering and URL normalization
+   - queue state transitions
+   - provider fallback routing
+2. Integration tests (extension-level):
+   - side panel to collector roundtrip
+   - queue resilience across service worker restarts
+3. Connector contract tests:
+   - bridge health check
+   - snapshot save smoke test against local Zotero connector
+   - failover to manual provider
+
+## 15) Implementation Phases
+
+### Phase 0: Foundation choices
+
+1. Scaffold MV3 + sidePanel + typed message protocol.
+2. Implement storage abstractions and queue state reducer.
+
+### Phase 1: Link collection workflow
+
+1. Build selector UI.
+2. Implement on-demand collector injection.
+3. Implement selection and queue authoring.
+
+### Phase 2: Queue engine
+
+1. Implement tab lifecycle controller.
+2. Implement pause/resume/stop/retry and recovery logic.
+3. Add alarm-based watchdog handling.
+
+### Phase 3: Save providers
+
+1. Implement `manual` provider first (stable baseline).
+2. Implement `connector_bridge` provider behind feature flag.
+3. Add health checks and automatic fallback.
+
+### Phase 4: Hardening
+
+1. Add diagnostics panel.
+2. Add contract tests against installed connector.
+3. Add compatibility kill switch for bridge regressions.
+
+### Phase 5: Optional future path
+
+1. Evaluate `local_api` provider against Zotero local connector endpoints.
+2. Compare reliability/maintenance cost versus bridge mode.
+
+## 16) MVP Definition (Best-Practice Baseline)
+
+MVP should be considered complete when:
+
+1. Side panel workflow is fully functional using native `chrome.sidePanel`.
+2. URL collection and curation are stable on modern sites.
+3. Queue is restart-safe under MV3 worker suspension.
+4. Manual provider is reliable.
+5. Connector bridge mode works as an opt-in acceleration path, with graceful fallback.
