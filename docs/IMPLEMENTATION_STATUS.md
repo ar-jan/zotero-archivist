@@ -1,2 +1,39 @@
-# Implementation status
+# Implementation Status
 
+Last updated: 2026-02-09
+
+## Phase 0 Vertical Slice
+
+- [x] Scaffolded core extension files:
+  - [x] `manifest.json`
+  - [x] `background/service-worker.js`
+  - [x] `sidepanel/panel.html`
+  - [x] `sidepanel/panel.js`
+  - [x] `sidepanel/panel.css`
+  - [x] `content/collector.js`
+  - [x] `shared/protocol.js`
+- [x] Wired toolbar action to open side panel via `chrome.sidePanel.open()`.
+- [x] Wired background runtime message routing for panel <-> background <-> content flow.
+- [x] Implemented `Collect Links` end-to-end:
+  - [x] Side panel sends `COLLECT_LINKS`.
+  - [x] Background injects `content/collector.js` via `chrome.scripting.executeScript`.
+  - [x] Collector normalizes and returns links.
+  - [x] Side panel renders collected results.
+- [x] Added storage in `chrome.storage.local` for:
+  - [x] Selector rules
+  - [x] Collected links
+- [x] Added optional host permission request flow at collection time.
+
+## Phase 0 Definition of Done
+
+- [x] Unpacked extension loads successfully.
+- [x] Clicking toolbar action opens the side panel.
+- [x] Clicking `Collect Links` shows links from the active page.
+
+## Next Phases
+
+- [ ] Phase 1: Build selector management UI and link curation controls (select/deselect/filter).
+- [ ] Phase 1: Implement queue authoring from selected links.
+- [ ] Phase 2: Implement MV3-safe queue engine with persisted state transitions.
+- [ ] Phase 3: Implement save providers (manual first, connector bridge behind feature flag).
+- [ ] Phase 4: Add diagnostics, contract tests, and hardening.
