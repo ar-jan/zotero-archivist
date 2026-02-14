@@ -217,6 +217,9 @@ async function collectLinks() {
     }
 
     const links = normalizeCollectedLinks(response.links);
+    if (response.providerDiagnostics) {
+      setProviderDiagnosticsState(normalizeProviderDiagnostics(response.providerDiagnostics));
+    }
     setCollectedLinksState(links);
     setStatus(`Collected ${links.length} link(s).`);
   } catch (error) {
@@ -1153,12 +1156,28 @@ function renderIntegrationState() {
 
   const connectorStatus = providerDiagnosticsState.connectorBridge;
   const connectorHealthLabel =
-    connectorStatus.healthy === true ? "healthy" : connectorStatus.enabled ? "degraded" : "disabled";
+    connectorStatus.enabled === false
+      ? "disabled"
+      : connectorStatus.healthy === true
+        ? "available"
+        : "unavailable";
+  const connectorAvailabilityLabel = formatNullableBooleanLabel(
+    connectorStatus.connectorAvailable,
+    "available",
+    "unavailable"
+  );
+  const zoteroOnlineLabel = formatNullableBooleanLabel(
+    connectorStatus.zoteroOnline,
+    "online",
+    "offline"
+  );
 
-  const summaryParts = [
-    `Connector bridge: ${connectorHealthLabel}`,
-    connectorStatus.details
-  ];
+  const summaryParts = [`Connector bridge: ${connectorHealthLabel}`];
+  if (connectorStatus.enabled) {
+    summaryParts.push(`Connector extension: ${connectorAvailabilityLabel}`);
+    summaryParts.push(`Zotero app: ${zoteroOnlineLabel}`);
+  }
+  summaryParts.push(connectorStatus.details);
   if (typeof providerDiagnosticsState.lastError === "string" && providerDiagnosticsState.lastError.length > 0) {
     summaryParts.push(providerDiagnosticsState.lastError);
   }
@@ -1481,6 +1500,8 @@ function normalizeProviderDiagnostics(input) {
     connectorBridge: {
       enabled: connectorBridgeEnabled,
       healthy: connectorBridgeInput.healthy === true,
+      connectorAvailable: normalizeNullableBoolean(connectorBridgeInput.connectorAvailable),
+      zoteroOnline: normalizeNullableBoolean(connectorBridgeInput.zoteroOnline),
       details:
         typeof connectorBridgeInput.details === "string" && connectorBridgeInput.details.trim().length > 0
           ? connectorBridgeInput.details.trim()
@@ -1503,6 +1524,8 @@ function createDefaultProviderDiagnosticsState() {
     connectorBridge: {
       enabled: true,
       healthy: false,
+      connectorAvailable: null,
+      zoteroOnline: null,
       details: "Connector bridge status unknown."
     },
     lastError: null,
@@ -1566,6 +1589,26 @@ function formatProviderModeLabel(mode) {
     return "local api";
   }
   return "connector bridge";
+}
+
+function normalizeNullableBoolean(value) {
+  if (value === true) {
+    return true;
+  }
+  if (value === false) {
+    return false;
+  }
+  return null;
+}
+
+function formatNullableBooleanLabel(value, trueLabel, falseLabel) {
+  if (value === true) {
+    return trueLabel;
+  }
+  if (value === false) {
+    return falseLabel;
+  }
+  return "unknown";
 }
 
 function setStatus(message) {

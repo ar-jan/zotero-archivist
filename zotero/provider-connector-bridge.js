@@ -9,43 +9,69 @@ const CONNECTOR_BRIDGE_IFRAME_PATH = "chromeMessageIframe/messageIframe.html";
 const BRIDGE_HEALTH_TIMEOUT_MS = 4000;
 const BRIDGE_SAVE_TIMEOUT_MS = 120000;
 const BRIDGE_DEFAULT_FRAME_TIMEOUT_MS = 8000;
-const CONNECTOR_OFFLINE_MESSAGE =
+const CONNECTOR_OFFLINE_SAVE_MESSAGE =
   "Zotero Connector reports the local Zotero client as offline for bridge save.";
+const CONNECTOR_HEALTHY_MESSAGE =
+  "Zotero Connector is available and reports the Zotero app as online.";
+const CONNECTOR_OFFLINE_HEALTH_MESSAGE =
+  "Zotero Connector is available, but reports the Zotero app as offline.";
+const CONNECTOR_EXTENSION_UNAVAILABLE_MESSAGE =
+  "Zotero Connector extension is unavailable. Ensure it is installed and enabled.";
+const CONNECTOR_PROBE_TAB_REQUIRED_MESSAGE =
+  "Connector probe requires an open http(s) tab with granted site access.";
 
 export function createConnectorBridgeProvider() {
   return {
     mode: SAVE_PROVIDER_MODES.CONNECTOR_BRIDGE,
     async checkHealth(input = {}) {
-      if (!Number.isInteger(input?.tabId)) {
-        return {
+      const probeTarget = await resolveBridgeProbeTarget(input?.tabId);
+      if (!probeTarget.ok) {
+        return createConnectorHealthResult({
           ok: false,
-          details: "Connector bridge probe requires an active queue tab."
-        };
+          details: probeTarget.details,
+          connectorAvailable: null,
+          zoteroOnline: null
+        });
       }
 
       const probeResult = await runBridgeCommand({
-        tabId: input.tabId,
+        tabId: probeTarget.tabId,
         timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
         command: ["Connector.checkIsOnline", []]
       });
       if (!probeResult.ok) {
-        return {
+        if (isConnectorUnavailableError(probeResult.error)) {
+          return createConnectorHealthResult({
+            ok: false,
+            details: CONNECTOR_EXTENSION_UNAVAILABLE_MESSAGE,
+            connectorAvailable: false,
+            zoteroOnline: null
+          });
+        }
+
+        return createConnectorHealthResult({
           ok: false,
-          details: `Connector bridge probe failed: ${probeResult.error}`
-        };
+          details: `Connector bridge probe failed: ${probeResult.error}`,
+          connectorAvailable: null,
+          zoteroOnline: null
+        });
       }
 
       if (probeResult.result !== true) {
-        return {
+        return createConnectorHealthResult({
           ok: false,
-          details: CONNECTOR_OFFLINE_MESSAGE
-        };
+          details: CONNECTOR_OFFLINE_HEALTH_MESSAGE,
+          connectorAvailable: true,
+          zoteroOnline: false
+        });
       }
 
-      return {
+      return createConnectorHealthResult({
         ok: true,
-        details: "Connector bridge channel is reachable and Zotero client is online."
-      };
+        details: CONNECTOR_HEALTHY_MESSAGE,
+        connectorAvailable: true,
+        zoteroOnline: true
+      });
     },
     async saveWebPageWithSnapshot(input) {
       if (!Number.isInteger(input?.tabId)) {
@@ -97,7 +123,7 @@ export function createConnectorBridgeProvider() {
         return createProviderSaveError(`Connector bridge online check failed: ${onlineResult.error}`);
       }
       if (onlineResult.result !== true) {
-        return createProviderSaveError(CONNECTOR_OFFLINE_MESSAGE);
+        return createProviderSaveError(CONNECTOR_OFFLINE_SAVE_MESSAGE);
       }
 
       const saveResult = await runBridgeCommand({
@@ -115,6 +141,181 @@ export function createConnectorBridgeProvider() {
       return createProviderSaveSuccess();
     }
   };
+}
+
+function createConnectorHealthResult({ ok, details, connectorAvailable = null, zoteroOnline = null }) {
+  return {
+    ok,
+    details,
+    connectorAvailable,
+    zoteroOnline
+  };
+}
+
+async function resolveBridgeProbeTarget(preferredTabId) {
+  if (Number.isInteger(preferredTabId)) {
+    return resolveProbeTargetFromTabId(preferredTabId);
+  }
+
+  const candidateTabs = await listProbeCandidateTabs();
+  for (const tab of candidateTabs) {
+    if (await canUseTabForBridgeProbe(tab)) {
+      return {
+        ok: true,
+        tabId: tab.id
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    details: CONNECTOR_PROBE_TAB_REQUIRED_MESSAGE
+  };
+}
+
+async function resolveProbeTargetFromTabId(tabId) {
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch (_error) {
+    return {
+      ok: false,
+      details: "Connector probe tab is no longer available."
+    };
+  }
+
+  if (!isHttpProbeUrl(tab?.url)) {
+    return {
+      ok: false,
+      details: "Connector probe tab must use an http(s) URL."
+    };
+  }
+
+  const hasPermission = await hasHostPermissionForUrl(tab.url);
+  if (!hasPermission) {
+    return {
+      ok: false,
+      details: "Connector probe tab does not currently have granted site access."
+    };
+  }
+
+  return {
+    ok: true,
+    tabId
+  };
+}
+
+async function listProbeCandidateTabs() {
+  let focusedActiveTabs = [];
+  let activeTabs = [];
+  let httpTabs = [];
+
+  try {
+    focusedActiveTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  } catch (_error) {
+    focusedActiveTabs = [];
+  }
+
+  try {
+    activeTabs = await chrome.tabs.query({ active: true });
+  } catch (_error) {
+    activeTabs = [];
+  }
+
+  try {
+    httpTabs = await chrome.tabs.query({
+      url: ["http://*/*", "https://*/*"]
+    });
+  } catch (_error) {
+    httpTabs = [];
+  }
+
+  const seenTabIds = new Set();
+  const dedupedTabs = [];
+  for (const tab of [...focusedActiveTabs, ...activeTabs, ...httpTabs]) {
+    if (!Number.isInteger(tab?.id) || seenTabIds.has(tab.id)) {
+      continue;
+    }
+    seenTabIds.add(tab.id);
+    dedupedTabs.push(tab);
+  }
+
+  return dedupedTabs;
+}
+
+async function canUseTabForBridgeProbe(tab) {
+  if (!Number.isInteger(tab?.id)) {
+    return false;
+  }
+
+  if (!isHttpProbeUrl(tab?.url)) {
+    return false;
+  }
+
+  return hasHostPermissionForUrl(tab.url);
+}
+
+function isHttpProbeUrl(url) {
+  if (typeof url !== "string" || url.length === 0) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function hasHostPermissionForUrl(url) {
+  const originPattern = toOriginPattern(url);
+  if (!originPattern) {
+    return false;
+  }
+
+  try {
+    return await chrome.permissions.contains({
+      origins: [originPattern]
+    });
+  } catch (_error) {
+    return false;
+  }
+}
+
+function toOriginPattern(url) {
+  if (!isHttpProbeUrl(url)) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}/*`;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function isConnectorUnavailableError(errorMessage) {
+  if (typeof errorMessage !== "string" || errorMessage.length === 0) {
+    return false;
+  }
+
+  const normalized = errorMessage.toLowerCase();
+  if (normalized.includes("unable to load zotero connector bridge iframe")) {
+    return true;
+  }
+  if (normalized.includes("timed out while loading zotero connector bridge iframe")) {
+    return true;
+  }
+  if (normalized.includes("could not establish connection. receiving end does not exist")) {
+    return true;
+  }
+  if (normalized.includes("timed out while opening connector bridge channel")) {
+    return true;
+  }
+
+  return false;
 }
 
 async function runBridgeCommand({ tabId, timeoutMs, command }) {

@@ -31,8 +31,6 @@ const QUEUE_ALARM_DELAY_MINUTES = 1;
 const QUEUE_TAB_LOAD_TIMEOUT_MESSAGE = "Queue tab did not finish loading before timeout.";
 const QUEUE_TAB_CLOSED_MESSAGE = "Queue tab was closed before loading completed.";
 const CONNECTOR_BRIDGE_DISABLED_MESSAGE = "Connector bridge is disabled.";
-const CONNECTOR_BRIDGE_FALLBACK_MESSAGE =
-  "Connector bridge is unavailable. Queue items will fail until connector bridge is healthy.";
 
 let queueEngineRun = Promise.resolve();
 
@@ -133,7 +131,7 @@ async function getPanelState() {
   const queueItems = await getQueueItems();
   const queueRuntime = await getQueueRuntime();
   const providerSettings = await getProviderSettings();
-  const providerDiagnostics = await getProviderDiagnostics();
+  const providerDiagnostics = await refreshProviderDiagnostics("panel-state");
   const stored = await chrome.storage.local.get(STORAGE_KEYS.COLLECTED_LINKS);
   const collectedLinks = normalizeCollectedLinks(stored[STORAGE_KEYS.COLLECTED_LINKS]);
 
@@ -216,10 +214,12 @@ async function collectLinksFromActiveTab() {
   await chrome.storage.local.set({
     [STORAGE_KEYS.COLLECTED_LINKS]: links
   });
+  const providerDiagnostics = await refreshProviderDiagnostics("collect-links");
 
   return createSuccess({
     links,
-    collectedCount: links.length
+    collectedCount: links.length,
+    providerDiagnostics
   });
 }
 
@@ -868,7 +868,6 @@ async function resolveSaveProvider({ tabId = null } = {}) {
   const providerSettings = await getProviderSettings();
   let activeProvider = null;
   let connectorHealth = null;
-  let providerErrorMessage = null;
 
   if (providerSettings.connectorBridgeEnabled) {
     const connectorBridgeProvider = createConnectorBridgeProvider();
@@ -877,17 +876,14 @@ async function resolveSaveProvider({ tabId = null } = {}) {
     } catch (error) {
       connectorHealth = {
         ok: false,
-        details: `Connector bridge health check failed: ${String(error)}`
+        details: `Connector bridge health check failed: ${String(error)}`,
+        connectorAvailable: null,
+        zoteroOnline: null
       };
     }
 
     if (connectorHealth.ok === true) {
       activeProvider = connectorBridgeProvider;
-    } else {
-      providerErrorMessage = `${CONNECTOR_BRIDGE_FALLBACK_MESSAGE} ${normalizeDetailsText(
-        connectorHealth?.details,
-        "No connector bridge details were provided."
-      )}`;
     }
   }
 
@@ -903,9 +899,21 @@ async function resolveSaveProvider({ tabId = null } = {}) {
     connectorBridge: {
       enabled: providerSettings.connectorBridgeEnabled,
       healthy: providerSettings.connectorBridgeEnabled && connectorHealth?.ok === true,
+      connectorAvailable:
+        connectorHealth?.connectorAvailable === true
+          ? true
+          : connectorHealth?.connectorAvailable === false
+            ? false
+            : null,
+      zoteroOnline:
+        connectorHealth?.zoteroOnline === true
+          ? true
+          : connectorHealth?.zoteroOnline === false
+            ? false
+            : null,
       details: connectorDetails
     },
-    lastError: providerErrorMessage,
+    lastError: null,
     updatedAt: Date.now()
   };
 
