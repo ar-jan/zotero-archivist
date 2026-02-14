@@ -1,15 +1,8 @@
 import { DEFAULT_PROVIDER_SETTINGS, SAVE_PROVIDER_MODES } from "../shared/protocol.js";
 
 export function normalizeProviderSettings(input) {
-  if (!input || typeof input !== "object") {
-    return { ...DEFAULT_PROVIDER_SETTINGS };
-  }
-
   return {
-    connectorBridgeEnabled:
-      typeof input.connectorBridgeEnabled === "boolean"
-        ? input.connectorBridgeEnabled
-        : DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled
+    connectorBridgeEnabled: DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled
   };
 }
 

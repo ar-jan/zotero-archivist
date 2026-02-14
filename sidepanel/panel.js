@@ -35,7 +35,6 @@ const resumeQueueButton = document.getElementById("resume-queue-button");
 const stopQueueButton = document.getElementById("stop-queue-button");
 const retryFailedQueueButton = document.getElementById("retry-failed-queue-button");
 const rulesSummaryEl = document.getElementById("rules-summary");
-const enableConnectorBridgeInput = document.getElementById("enable-connector-bridge-input");
 const integrationModeEl = document.getElementById("integration-mode");
 const integrationBridgeRowEl = document.getElementById("integration-bridge-row");
 const integrationBridgeStatusEl = document.getElementById("integration-bridge-status");
@@ -50,14 +49,12 @@ let selectorRuleCounter = 0;
 let collectedLinksState = [];
 let queueItemsState = [];
 let queueRuntimeState = createDefaultQueueRuntimeState();
-let providerSettingsState = createDefaultProviderSettingsState();
 let providerDiagnosticsState = createDefaultProviderDiagnosticsState();
 let resultsFilterQuery = normalizeFilterQuery(resultsFilterInput.value);
 let persistCollectedLinksQueue = Promise.resolve();
 let queueAuthoringInProgress = false;
 let queueClearingInProgress = false;
 let queueLifecycleInProgress = false;
-let providerSettingsInProgress = false;
 
 collectButton.addEventListener("click", () => {
   void collectLinks();
@@ -136,10 +133,6 @@ retryFailedQueueButton.addEventListener("click", () => {
   void retryFailedQueueItems();
 });
 
-enableConnectorBridgeInput.addEventListener("change", () => {
-  void updateProviderSettings();
-});
-
 chrome.storage.onChanged.addListener((changes, areaName) => {
   handleStorageChange(changes, areaName);
 });
@@ -167,14 +160,12 @@ async function loadPanelState() {
   const collectedLinks = normalizeCollectedLinks(response.collectedLinks);
   const queueItems = normalizeQueueItems(response.queueItems);
   const queueRuntime = normalizeQueueRuntime(response.queueRuntime);
-  const providerSettings = normalizeProviderSettings(response.providerSettings);
   const providerDiagnostics = normalizeProviderDiagnostics(response.providerDiagnostics);
 
   renderSelectorRules(selectorRules);
   setCollectedLinksState(collectedLinks);
   setQueueItemsState(queueItems);
   setQueueRuntimeState(queueRuntime);
-  setProviderSettingsState(providerSettings);
   setProviderDiagnosticsState(providerDiagnostics);
   setSelectorRulesDirty(false);
   setStatus("Ready.");
@@ -634,11 +625,6 @@ function setQueueRuntimeState(queueRuntime) {
   updateQueueActionState();
 }
 
-function setProviderSettingsState(providerSettings) {
-  providerSettingsState = normalizeProviderSettings(providerSettings);
-  renderIntegrationState();
-}
-
 function setProviderDiagnosticsState(providerDiagnostics) {
   providerDiagnosticsState = normalizeProviderDiagnostics(providerDiagnostics);
   renderIntegrationState();
@@ -659,58 +645,9 @@ function handleStorageChange(changes, areaName) {
     setQueueRuntimeState(queueRuntimeChange.newValue);
   }
 
-  const providerSettingsChange = changes[STORAGE_KEYS.PROVIDER_SETTINGS];
-  if (providerSettingsChange) {
-    setProviderSettingsState(providerSettingsChange.newValue);
-  }
-
   const providerDiagnosticsChange = changes[STORAGE_KEYS.PROVIDER_DIAGNOSTICS];
   if (providerDiagnosticsChange) {
     setProviderDiagnosticsState(providerDiagnosticsChange.newValue);
-  }
-}
-
-async function updateProviderSettings() {
-  const requestedConnectorBridgeEnabled = enableConnectorBridgeInput.checked;
-  providerSettingsInProgress = true;
-  updateQueueActionState();
-  renderIntegrationState();
-
-  try {
-    const response = await chrome.runtime.sendMessage({
-      type: MESSAGE_TYPES.SET_PROVIDER_SETTINGS,
-      payload: {
-        settings: {
-          connectorBridgeEnabled: requestedConnectorBridgeEnabled
-        }
-      }
-    });
-
-    if (!response || response.ok !== true) {
-      setStatus(messageFromError(response?.error) ?? "Failed to update provider settings.");
-      renderIntegrationState();
-      return;
-    }
-
-    if (response.providerSettings) {
-      setProviderSettingsState(response.providerSettings);
-    }
-    if (response.providerDiagnostics) {
-      setProviderDiagnosticsState(response.providerDiagnostics);
-    }
-
-    if (providerSettingsState.connectorBridgeEnabled) {
-      setStatus("Connector bridge setting enabled.");
-    } else {
-      setStatus("Connector bridge setting disabled.");
-    }
-  } catch (error) {
-    console.error("[zotero-archivist] Failed to update provider settings.", error);
-    setStatus("Failed to update provider settings.");
-  } finally {
-    providerSettingsInProgress = false;
-    updateQueueActionState();
-    renderIntegrationState();
   }
 }
 
@@ -1155,9 +1092,6 @@ function renderQueue(queueItems) {
 }
 
 function renderIntegrationState() {
-  enableConnectorBridgeInput.checked = providerSettingsState.connectorBridgeEnabled === true;
-  enableConnectorBridgeInput.disabled = providerSettingsInProgress;
-
   integrationModeEl.textContent = `Mode: ${formatProviderModeLabel(providerDiagnosticsState.activeMode)}`;
 
   const connectorStatus = providerDiagnosticsState.connectorBridge;
@@ -1242,16 +1176,10 @@ function updateQueueActionState() {
     queueBusy ||
     queueRuntimeState.status === "running" ||
     queueCounts.retriableCount === 0;
-  enableConnectorBridgeInput.disabled = providerSettingsInProgress;
 }
 
 function isQueueBusy() {
-  return (
-    queueAuthoringInProgress ||
-    queueClearingInProgress ||
-    queueLifecycleInProgress ||
-    providerSettingsInProgress
-  );
+  return queueAuthoringInProgress || queueClearingInProgress || queueLifecycleInProgress;
 }
 
 function createResultMessageItem(message) {
@@ -1452,25 +1380,6 @@ function normalizeQueueRuntime(input) {
   };
 }
 
-function normalizeProviderSettings(input) {
-  if (!input || typeof input !== "object") {
-    return createDefaultProviderSettingsState();
-  }
-
-  return {
-    connectorBridgeEnabled:
-      typeof input.connectorBridgeEnabled === "boolean"
-        ? input.connectorBridgeEnabled
-        : createDefaultProviderSettingsState().connectorBridgeEnabled
-  };
-}
-
-function createDefaultProviderSettingsState() {
-  return {
-    connectorBridgeEnabled: true
-  };
-}
-
 function normalizeProviderDiagnostics(input) {
   if (!input || typeof input !== "object") {
     return createDefaultProviderDiagnosticsState();
@@ -1478,11 +1387,8 @@ function normalizeProviderDiagnostics(input) {
 
   const connectorBridgeInput =
     input.connectorBridge && typeof input.connectorBridge === "object" ? input.connectorBridge : {};
-  const defaultConnectorBridgeEnabled = createDefaultProviderSettingsState().connectorBridgeEnabled;
   const connectorBridgeEnabled =
-    typeof connectorBridgeInput.enabled === "boolean"
-      ? connectorBridgeInput.enabled
-      : defaultConnectorBridgeEnabled;
+    typeof connectorBridgeInput.enabled === "boolean" ? connectorBridgeInput.enabled : true;
   const activeMode =
     typeof input.activeMode === "string" && input.activeMode.length > 0
       ? input.activeMode
