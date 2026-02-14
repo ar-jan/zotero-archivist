@@ -51,14 +51,53 @@ body {
 .selector-rule-item {
   border: 1px solid #ddd;
   border-radius: 6px;
+  display: grid;
+  gap: 8px;
   padding: 8px;
 }
 
-.rule-top-row {
+.rule-header-row {
   align-items: center;
   display: flex;
+  gap: 8px;
   justify-content: space-between;
-  margin-bottom: 8px;
+}
+
+.rule-heading-group {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rule-heading-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  color: #222;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 700;
+  gap: 6px;
+  margin: 0;
+  overflow: hidden;
+  padding: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-heading-toggle::before {
+  content: "▸";
+  display: inline-block;
+  flex-shrink: 0;
+  transition: transform 120ms ease-in-out;
+}
+
+.rule-heading-toggle[aria-expanded="true"]::before {
+  transform: rotate(90deg);
 }
 
 .rule-toggle {
@@ -66,6 +105,7 @@ body {
   display: inline-flex;
   gap: 6px;
   font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .rule-delete-button {
@@ -78,9 +118,18 @@ body {
   padding: 4px 8px;
 }
 
+.rule-collapsible-fields {
+  border-top: 1px solid #ececec;
+  padding-top: 8px;
+}
+
 .rule-fields {
   display: grid;
   gap: 8px;
+}
+
+.rule-collapsible-fields[hidden] {
+  display: none;
 }
 
 .rule-field {

@@ -304,8 +304,17 @@ function createSelectorRuleItem(rule) {
   item.className = "selector-rule-item";
   item.dataset.ruleId = rule.id;
 
-  const topRow = document.createElement("div");
-  topRow.className = "rule-top-row";
+  const headerRow = document.createElement("div");
+  headerRow.className = "rule-header-row";
+
+  const headingGroup = document.createElement("div");
+  headingGroup.className = "rule-heading-group";
+
+  const headingButton = document.createElement("button");
+  headingButton.className = "rule-heading-toggle";
+  headingButton.type = "button";
+  headingButton.textContent = formatRuleHeading(rule.name ?? "", rule.id);
+  headingButton.setAttribute("aria-expanded", "false");
 
   const toggleLabel = document.createElement("label");
   toggleLabel.className = "rule-toggle";
@@ -314,25 +323,44 @@ function createSelectorRuleItem(rule) {
   toggleInput.type = "checkbox";
   toggleInput.checked = rule.enabled !== false;
   toggleLabel.append(toggleInput, document.createTextNode("Enabled"));
+  headingGroup.append(headingButton, toggleLabel);
 
   const deleteButton = document.createElement("button");
   deleteButton.className = "rule-delete-button";
   deleteButton.type = "button";
   deleteButton.textContent = "Delete";
 
-  topRow.append(toggleLabel, deleteButton);
+  headerRow.append(headingGroup, deleteButton);
+
+  const fieldsId = `rule-fields-${rule.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const nameField = createRuleField("Name", "rule-name-input", rule.name ?? "", "Readable label");
+  const nameInput = nameField.querySelector(".rule-name-input");
+  if (nameInput instanceof HTMLInputElement) {
+    nameInput.addEventListener("input", () => {
+      headingButton.textContent = formatRuleHeading(nameInput.value, rule.id);
+    });
+  }
 
   const fields = document.createElement("div");
-  fields.className = "rule-fields";
+  fields.className = "rule-fields rule-collapsible-fields";
+  fields.id = fieldsId;
+  fields.hidden = true;
+  headingButton.setAttribute("aria-controls", fieldsId);
+  headingButton.addEventListener("click", () => {
+    const nextExpanded = headingButton.getAttribute("aria-expanded") !== "true";
+    headingButton.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+    fields.hidden = !nextExpanded;
+  });
+
   fields.append(
-    createRuleField("Name", "rule-name-input", rule.name ?? "", "Readable label"),
+    nameField,
     createRuleField("CSS selector", "rule-selector-input", rule.cssSelector ?? "", "a[href]"),
     createRuleField("URL attribute", "rule-attribute-input", rule.urlAttribute ?? "href", "href"),
     createRuleField("Include pattern", "rule-include-input", rule.includePattern ?? "", "optional"),
     createRuleField("Exclude pattern", "rule-exclude-input", rule.excludePattern ?? "", "optional")
   );
 
-  item.append(topRow, fields);
+  item.append(headerRow, fields);
   return item;
 }
 
@@ -352,6 +380,18 @@ function createRuleField(labelText, inputClassName, value, placeholder) {
 
   wrapper.append(label, input);
   return wrapper;
+}
+
+function formatRuleHeading(name, fallbackId) {
+  if (typeof name === "string" && name.trim().length > 0) {
+    return name.trim();
+  }
+
+  if (typeof fallbackId === "string" && fallbackId.trim().length > 0) {
+    return fallbackId.trim();
+  }
+
+  return "Unnamed rule";
 }
 
 function readSelectorRulesFromForm() {
