@@ -356,9 +356,9 @@ interface ZoteroSaveProvider {
 
 These rules are normative and are intended to prevent unrequested scope creep.
 
-1. Treat `docs/IMPLEMENTATION_STATUS.md` as the execution checklist for implementation work.
+1. Treat this document as baseline architecture context; prioritize user-reported issues and explicitly requested features for active scope.
 2. Do not implement optional/deferred items unless they are explicitly requested in the current task.
-3. New runtime message types, storage keys, or side-panel controls require explicit user approval unless already listed as in-scope checklist items.
+3. New runtime message types, storage keys, or side-panel controls require explicit user approval.
 4. If scope is ambiguous, stop and confirm before implementing.
 
 ## 17) MVP Definition (Best-Practice Baseline)

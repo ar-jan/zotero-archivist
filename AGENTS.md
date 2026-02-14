@@ -8,7 +8,7 @@
 - `shared/`: cross-surface contracts and state normalization utilities.
 - `zotero/`: provider interface and connector bridge implementation.
 - `tests/`: module-level `node:test` suites and `tests/test-helpers/` mocks.
-- `docs/`: architecture and implementation status docs used for scope control.
+- `docs/`: architecture and design notes for extension behavior and constraints.
 
 ## Build, Test, and Development Commands
 - `npm install`: install local Node dependencies.
@@ -39,4 +39,4 @@
 ## Security & Configuration Tips
 - Preserve least-privilege permissions; prefer runtime host permission requests over broad defaults.
 - Avoid always-on content script injection unless explicitly required.
-- Keep implementation scope aligned with `docs/IMPLEMENTATION_STATUS.md` and `docs/ARCHITECTURE.md`.
+- Keep implementation scope aligned with `docs/ARCHITECTURE.md` and active user issues/feature requests.
