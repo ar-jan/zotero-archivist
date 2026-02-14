@@ -66,7 +66,6 @@
 
 4. `zotero/providers/*`
    - `connectorBridgeProvider` (advanced/experimental)
-   - `manualProvider` (stable fallback)
    - `localApiProvider` (future option)
 
 5. `shared/protocol.js`
@@ -92,7 +91,6 @@ zotero-archivist/
 ├── zotero/
 │   ├── provider-interface.js
 │   ├── provider-connector-bridge.js
-│   ├── provider-manual.js
 │   └── provider-local-api.js
 ├── shared/
 │   ├── protocol.js
@@ -158,7 +156,6 @@ type QueueItemStatus =
   | "opening_tab"
   | "saving_snapshot"
   | "archived"
-  | "manual_required"
   | "failed"
   | "cancelled";
 
@@ -173,7 +170,7 @@ type QueueItem = {
   updatedAt: number;
 };
 
-type SaveProviderMode = "connector_bridge" | "manual" | "local_api";
+type SaveProviderMode = "connector_bridge" | "local_api";
 ```
 
 ## 8) Queue Engine (MV3-safe)
@@ -193,15 +190,15 @@ Use a deterministic state machine with persisted checkpoints.
 State transitions:
 
 1. `pending -> opening_tab -> saving_snapshot -> archived`
-2. `saving_snapshot -> manual_required` on unsupported provider errors
+2. `saving_snapshot -> failed` on provider or bridge errors
 3. Any active state -> `failed` on terminal error/timeout
 
 Current Phase 3 behavior (2026-02-14):
 
 1. Queue controls (`start`, `pause`, `resume`, `stop`, `retry failed`) are wired in the side panel and background runtime.
 2. `pending -> opening_tab -> saving_snapshot` now routes through provider orchestration in background.
-3. Manual provider is the current stable path and transitions items to `manual_required` with explicit side-panel confirmation actions.
-4. Connector bridge is feature-flagged and health-checked; when unavailable, runtime automatically falls back to manual mode.
+3. Queue save completion/failure is fully automated; there is no user-confirmation queue state.
+4. Connector bridge is feature-flagged and health-checked; when unavailable, save attempts fail with explicit diagnostics.
 
 ## 9) URL Collection Flow
 
@@ -230,7 +227,6 @@ interface ZoteroSaveProvider {
   checkHealth(): Promise<{ ok: boolean; details?: string }>;
   saveWebPageWithSnapshot(input: { tabId: number; url: string; title?: string }): Promise<{
     ok: boolean;
-    requiresManual?: boolean;
     error?: string;
   }>;
 }
@@ -239,8 +235,7 @@ interface ZoteroSaveProvider {
 ## 10.2 Provider order
 
 1. `connector_bridge` (if explicitly enabled and health check passes)
-2. `manual`
-3. `local_api` (future; not in MVP)
+2. `local_api` (future; not in MVP)
 
 ## 10.3 Connector bridge provider (advanced)
 
@@ -250,14 +245,13 @@ interface ZoteroSaveProvider {
    - feature flag
    - strict timeout
    - compatibility/version probes
-   - automatic downgrade to manual provider
+   - fail-closed behavior with explicit diagnostics
 
-## 10.4 Manual provider (required baseline)
+## 10.4 Failure handling
 
-1. Opens target URL tab.
-2. Prompts user to use Zotero save action (or shortcut) for snapshot save.
-3. Captures user confirmation/failure and advances queue.
-4. Ensures system remains usable even if bridge path breaks.
+1. Queue items move to `failed` when save commands error or time out.
+2. Errors are surfaced in queue item `lastError` and provider diagnostics.
+3. Retry flow requeues failed/cancelled items after operator action.
 
 ## 11) Side Panel UX Plan
 
@@ -278,7 +272,7 @@ interface ZoteroSaveProvider {
    - stop
    - retry failed
 4. Operational clarity:
-   - current mode (`connector_bridge` or `manual`)
+   - current mode (`connector_bridge`, future `local_api`)
    - active Zotero detection state
    - explicit warnings on degraded mode
 
@@ -311,14 +305,14 @@ interface ZoteroSaveProvider {
 1. Unit tests:
    - selector filtering and URL normalization
    - queue state transitions
-   - provider fallback routing
+   - provider availability routing
 2. Integration tests (extension-level):
    - side panel to collector roundtrip
    - queue resilience across service worker restarts
 3. Connector contract tests:
    - bridge health check
    - snapshot save smoke test against local Zotero connector
-   - failover to manual provider
+   - failure diagnostics when bridge is unavailable
 
 ## 15) Implementation Phases
 
@@ -341,9 +335,9 @@ interface ZoteroSaveProvider {
 
 ### Phase 3: Save providers
 
-1. Implement `manual` provider first (stable baseline).
-2. Implement `connector_bridge` provider behind feature flag.
-3. Add health checks and automatic fallback.
+1. Implement `connector_bridge` provider behind feature flag.
+2. Add health checks and explicit failure diagnostics.
+3. Keep `local_api` as a future provider path.
 
 ### Phase 4: Hardening
 
@@ -363,5 +357,4 @@ MVP should be considered complete when:
 1. Side panel workflow is fully functional using native `chrome.sidePanel`.
 2. URL collection and curation are stable on modern sites.
 3. Queue is restart-safe under MV3 worker suspension.
-4. Manual provider is reliable.
-5. Connector bridge mode works as an opt-in acceleration path, with graceful fallback.
+4. Connector bridge mode works as an opt-in path with clear diagnostics on failure.

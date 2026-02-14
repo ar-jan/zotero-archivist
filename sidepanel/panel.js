@@ -47,7 +47,6 @@ let queueAuthoringInProgress = false;
 let queueClearingInProgress = false;
 let queueLifecycleInProgress = false;
 let providerSettingsInProgress = false;
-let manualQueueResolutionInProgress = false;
 
 collectButton.addEventListener("click", () => {
   void collectLinks();
@@ -626,9 +625,9 @@ async function updateProviderSettings() {
     }
 
     if (providerSettingsState.connectorBridgeEnabled) {
-      setStatus("Connector bridge setting enabled. Manual fallback remains active when unavailable.");
+      setStatus("Connector bridge setting enabled.");
     } else {
-      setStatus("Connector bridge setting disabled. Manual provider is active.");
+      setStatus("Connector bridge setting disabled.");
     }
   } catch (error) {
     console.error("[zotero-archivist] Failed to update provider settings.", error);
@@ -678,51 +677,6 @@ async function retryFailedQueueItems() {
     fallbackErrorMessage: "Failed to retry queue items.",
     successStatusMessage: "Retry queued for failed items."
   });
-}
-
-async function resolveManualQueueItem(queueItemId, outcome) {
-  if (manualQueueResolutionInProgress) {
-    return;
-  }
-
-  manualQueueResolutionInProgress = true;
-  updateQueueActionState();
-  renderQueue(queueItemsState);
-
-  try {
-    const response = await chrome.runtime.sendMessage({
-      type: MESSAGE_TYPES.RESOLVE_MANUAL_QUEUE_ITEM,
-      payload: {
-        queueItemId,
-        outcome
-      }
-    });
-
-    if (!response || response.ok !== true) {
-      setStatus(messageFromError(response?.error) ?? "Failed to resolve manual queue item.");
-      return;
-    }
-
-    if (Array.isArray(response.queueItems)) {
-      setQueueItemsState(response.queueItems);
-    }
-    if (response.queueRuntime) {
-      setQueueRuntimeState(response.queueRuntime);
-    }
-
-    if (outcome === "saved") {
-      setStatus("Marked manual-required item as saved.");
-    } else {
-      setStatus("Marked manual-required item as failed.");
-    }
-  } catch (error) {
-    console.error("[zotero-archivist] Failed to resolve manual queue item.", error);
-    setStatus("Failed to resolve manual queue item.");
-  } finally {
-    manualQueueResolutionInProgress = false;
-    updateQueueActionState();
-    renderQueue(queueItemsState);
-  }
 }
 
 async function runQueueLifecycleAction({
@@ -1060,7 +1014,6 @@ function renderLinks(links) {
 
 function renderQueue(queueItems) {
   const safeQueueItems = Array.isArray(queueItems) ? queueItems : [];
-  const queueBusy = isQueueBusy();
 
   queueTitleEl.textContent = `Queue (${safeQueueItems.length})`;
   queueSummaryEl.textContent = summarizeQueueCounts(safeQueueItems);
@@ -1106,32 +1059,6 @@ function renderQueue(queueItems) {
       meta.append(errorEl);
     }
 
-    if (queueItem.status === "manual_required") {
-      const manualActions = document.createElement("div");
-      manualActions.className = "queue-manual-actions";
-
-      const markSavedButton = document.createElement("button");
-      markSavedButton.type = "button";
-      markSavedButton.className = "queue-manual-button queue-manual-button-success";
-      markSavedButton.textContent = "Mark Saved";
-      markSavedButton.disabled = queueBusy;
-      markSavedButton.addEventListener("click", () => {
-        void resolveManualQueueItem(queueItem.id, "saved");
-      });
-
-      const markFailedButton = document.createElement("button");
-      markFailedButton.type = "button";
-      markFailedButton.className = "queue-manual-button queue-manual-button-failed";
-      markFailedButton.textContent = "Mark Failed";
-      markFailedButton.disabled = queueBusy;
-      markFailedButton.addEventListener("click", () => {
-        void resolveManualQueueItem(queueItem.id, "failed");
-      });
-
-      manualActions.append(markSavedButton, markFailedButton);
-      meta.append(manualActions);
-    }
-
     row.append(link, statusBadge);
     item.append(row, meta);
     queueListEl.append(item);
@@ -1165,7 +1092,6 @@ function renderQueueRuntimeStatus(queueRuntime) {
     return;
   }
 
-  const counts = getQueueItemCounts(queueItemsState);
   if (queueRuntime.status === "running") {
     if (typeof queueRuntime.activeQueueItemId === "string") {
       queueRuntimeStatusEl.textContent = "Queue runtime: running (processing active item).";
@@ -1176,11 +1102,6 @@ function renderQueueRuntimeStatus(queueRuntime) {
   }
 
   if (queueRuntime.status === "paused") {
-    if (counts.manualRequiredCount > 0) {
-      queueRuntimeStatusEl.textContent =
-        "Queue runtime: paused (manual-required item present).";
-      return;
-    }
     queueRuntimeStatusEl.textContent = "Queue runtime: paused.";
     return;
   }
@@ -1235,8 +1156,7 @@ function isQueueBusy() {
     queueAuthoringInProgress ||
     queueClearingInProgress ||
     queueLifecycleInProgress ||
-    providerSettingsInProgress ||
-    manualQueueResolutionInProgress
+    providerSettingsInProgress
   );
 }
 
@@ -1371,10 +1291,6 @@ function normalizeQueueItems(input) {
       queueItem.lastError = candidate.lastError.trim();
     }
 
-    if (Number.isInteger(candidate.manualTabId)) {
-      queueItem.manualTabId = candidate.manualTabId;
-    }
-
     normalized.push(queueItem);
   }
 
@@ -1387,7 +1303,6 @@ function normalizeQueueStatus(status) {
     case "opening_tab":
     case "saving_snapshot":
     case "archived":
-    case "manual_required":
     case "failed":
     case "cancelled":
       return status;
@@ -1467,7 +1382,9 @@ function normalizeProviderDiagnostics(input) {
   const connectorBridgeInput =
     input.connectorBridge && typeof input.connectorBridge === "object" ? input.connectorBridge : {};
   const activeMode =
-    typeof input.activeMode === "string" && input.activeMode.length > 0 ? input.activeMode : "manual";
+    typeof input.activeMode === "string" && input.activeMode.length > 0
+      ? input.activeMode
+      : "connector_bridge";
 
   return {
     activeMode,
@@ -1492,7 +1409,7 @@ function normalizeProviderDiagnostics(input) {
 
 function createDefaultProviderDiagnosticsState() {
   return {
-    activeMode: "manual",
+    activeMode: "connector_bridge",
     connectorBridge: {
       enabled: false,
       healthy: false,
@@ -1517,15 +1434,13 @@ function getQueueItemCounts(queueItems) {
   const pendingCount = safeQueueItems.filter((item) => item.status === "pending").length;
   const archivedCount = safeQueueItems.filter((item) => item.status === "archived").length;
   const failedCount = safeQueueItems.filter((item) => item.status === "failed").length;
-  const manualRequiredCount = safeQueueItems.filter((item) => item.status === "manual_required").length;
   const cancelledCount = safeQueueItems.filter((item) => item.status === "cancelled").length;
-  const retriableCount = failedCount + manualRequiredCount + cancelledCount;
+  const retriableCount = failedCount + cancelledCount;
 
   return {
     pendingCount,
     archivedCount,
     failedCount,
-    manualRequiredCount,
     cancelledCount,
     retriableCount
   };
@@ -1545,9 +1460,6 @@ function summarizeQueueCounts(queueItems) {
   if (counts.failedCount > 0) {
     summaryParts.push(`${counts.failedCount} failed`);
   }
-  if (counts.manualRequiredCount > 0) {
-    summaryParts.push(`${counts.manualRequiredCount} manual`);
-  }
 
   return summaryParts.join(" • ");
 }
@@ -1563,7 +1475,7 @@ function formatProviderModeLabel(mode) {
   if (mode === "local_api") {
     return "local api";
   }
-  return "manual";
+  return "connector bridge";
 }
 
 function setStatus(message) {

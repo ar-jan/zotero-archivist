@@ -97,7 +97,7 @@ export function createConnectorBridgeProvider() {
         return createProviderSaveError(`Connector bridge online check failed: ${onlineResult.error}`);
       }
       if (onlineResult.result !== true) {
-        return createProviderSaveManual(CONNECTOR_OFFLINE_MESSAGE);
+        return createProviderSaveError(CONNECTOR_OFFLINE_MESSAGE);
       }
 
       const saveResult = await runBridgeCommand({

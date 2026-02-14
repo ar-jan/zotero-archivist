@@ -448,8 +448,7 @@ body {
 }
 
 .queue-status-opening_tab,
-.queue-status-saving_snapshot,
-.queue-status-manual_required {
+.queue-status-saving_snapshot {
   background: #fff5dd;
   color: #7a4e0a;
 }
@@ -463,37 +462,6 @@ body {
 
 .queue-item-error {
   color: #7a4e0a;
-}
-
-.queue-manual-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.queue-manual-button {
-  border: 1px solid #888;
-  border-radius: 6px;
-  background: #fff;
-  color: #333;
-  cursor: pointer;
-  font-size: 0.76rem;
-  padding: 4px 8px;
-}
-
-.queue-manual-button-success {
-  border-color: #1d6d3f;
-  color: #1d6d3f;
-}
-
-.queue-manual-button-failed {
-  border-color: #8c1d1d;
-  color: #8c1d1d;
-}
-
-.queue-manual-button[disabled] {
-  cursor: default;
-  opacity: 0.6;
 }
 
 .queue-empty {

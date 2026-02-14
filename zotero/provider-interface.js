@@ -12,7 +12,7 @@ export function normalizeProviderSettings(input) {
 
 export function createDefaultProviderDiagnostics() {
   return {
-    activeMode: SAVE_PROVIDER_MODES.MANUAL,
+    activeMode: SAVE_PROVIDER_MODES.CONNECTOR_BRIDGE,
     connectorBridge: {
       enabled: false,
       healthy: false,
@@ -31,8 +31,7 @@ export function normalizeProviderDiagnostics(input) {
 
   const activeMode =
     typeof input.activeMode === "string" &&
-    (input.activeMode === SAVE_PROVIDER_MODES.MANUAL ||
-      input.activeMode === SAVE_PROVIDER_MODES.CONNECTOR_BRIDGE ||
+    (input.activeMode === SAVE_PROVIDER_MODES.CONNECTOR_BRIDGE ||
       input.activeMode === SAVE_PROVIDER_MODES.LOCAL_API)
       ? input.activeMode
       : defaults.activeMode;
@@ -58,14 +57,6 @@ export function normalizeProviderDiagnostics(input) {
 export function createProviderSaveSuccess() {
   return {
     ok: true
-  };
-}
-
-export function createProviderSaveManual(details) {
-  return {
-    ok: false,
-    requiresManual: true,
-    details
   };
 }
 

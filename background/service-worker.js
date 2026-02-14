@@ -14,14 +14,12 @@ import {
   normalizeProviderSettings
 } from "../zotero/provider-interface.js";
 import { createConnectorBridgeProvider } from "../zotero/provider-connector-bridge.js";
-import { createManualProvider } from "../zotero/provider-manual.js";
 
 const QUEUE_ITEM_STATUSES = new Set([
   "pending",
   "opening_tab",
   "saving_snapshot",
   "archived",
-  "manual_required",
   "failed",
   "cancelled"
 ]);
@@ -32,13 +30,9 @@ const QUEUE_ALARM_NAME = "queue-engine-watchdog";
 const QUEUE_ALARM_DELAY_MINUTES = 1;
 const QUEUE_TAB_LOAD_TIMEOUT_MESSAGE = "Queue tab did not finish loading before timeout.";
 const QUEUE_TAB_CLOSED_MESSAGE = "Queue tab was closed before loading completed.";
-const QUEUE_MANUAL_PROVIDER_MESSAGE =
-  "Use the Zotero Connector save action on this tab, then confirm the result in Zotero Archivist.";
-const QUEUE_MANUAL_FAILED_DEFAULT_MESSAGE =
-  "Manual save was marked as failed by the user.";
 const CONNECTOR_BRIDGE_DISABLED_MESSAGE = "Connector bridge is disabled.";
 const CONNECTOR_BRIDGE_FALLBACK_MESSAGE =
-  "Connector bridge is unavailable. Falling back to manual provider.";
+  "Connector bridge is unavailable. Queue items will fail until connector bridge is healthy.";
 
 let queueEngineRun = Promise.resolve();
 
@@ -117,8 +111,6 @@ async function handleMessage(message, _sender) {
       return retryFailedQueue();
     case MESSAGE_TYPES.SET_PROVIDER_SETTINGS:
       return setProviderSettings(message.payload?.settings);
-    case MESSAGE_TYPES.RESOLVE_MANUAL_QUEUE_ITEM:
-      return resolveManualQueueItem(message.payload);
     case MESSAGE_TYPES.SET_SELECTOR_RULES:
       return setSelectorRules(message.payload?.rules);
     default:
@@ -293,12 +285,6 @@ async function clearQueue() {
     return createError(ERROR_CODES.BAD_REQUEST, "Stop or pause the queue before clearing it.");
   }
 
-  const queueItems = await getQueueItems();
-  for (const queueItem of queueItems) {
-    if (Number.isInteger(queueItem.manualTabId)) {
-      await closeTabIfPresent(queueItem.manualTabId);
-    }
-  }
   if (Number.isInteger(queueRuntime.activeTabId)) {
     await closeTabIfPresent(queueRuntime.activeTabId);
   }
@@ -444,7 +430,7 @@ async function retryFailedQueue() {
   const queueItems = await getQueueItems();
   let retriedCount = 0;
   const nextQueueItems = queueItems.map((item) => {
-    if (item.status !== "failed" && item.status !== "cancelled" && item.status !== "manual_required") {
+    if (item.status !== "failed" && item.status !== "cancelled") {
       return item;
     }
 
@@ -453,13 +439,12 @@ async function retryFailedQueue() {
       ...item,
       status: "pending",
       updatedAt: Date.now(),
-      manualTabId: null,
       lastError: undefined
     };
   });
 
   if (retriedCount === 0) {
-    return createError(ERROR_CODES.BAD_REQUEST, "Queue has no failed, cancelled, or manual-required items.");
+    return createError(ERROR_CODES.BAD_REQUEST, "Queue has no failed or cancelled items.");
   }
 
   await saveQueueItems(nextQueueItems);
@@ -483,71 +468,6 @@ async function setProviderSettings(rawSettings) {
   return createSuccess({
     providerSettings,
     providerDiagnostics
-  });
-}
-
-async function resolveManualQueueItem(payload) {
-  const queueItemId =
-    typeof payload?.queueItemId === "string" && payload.queueItemId.trim().length > 0
-      ? payload.queueItemId.trim()
-      : null;
-  const outcome = payload?.outcome;
-  const failureMessage =
-    typeof payload?.failureMessage === "string" && payload.failureMessage.trim().length > 0
-      ? payload.failureMessage.trim()
-      : QUEUE_MANUAL_FAILED_DEFAULT_MESSAGE;
-
-  if (!queueItemId || (outcome !== "saved" && outcome !== "failed")) {
-    return createError(
-      ERROR_CODES.BAD_REQUEST,
-      "Manual queue resolution requires queueItemId and outcome (saved|failed)."
-    );
-  }
-
-  const queueItems = await getQueueItems();
-  const queueItemIndex = queueItems.findIndex((item) => item.id === queueItemId);
-  if (queueItemIndex < 0) {
-    return createError(ERROR_CODES.QUEUE_ITEM_NOT_FOUND, "Queue item was not found.");
-  }
-
-  const queueItem = queueItems[queueItemIndex];
-  if (queueItem.status !== "manual_required") {
-    return createError(ERROR_CODES.BAD_REQUEST, "Queue item is not waiting for manual confirmation.");
-  }
-
-  const nextQueueItems = [...queueItems];
-  nextQueueItems[queueItemIndex] = {
-    ...queueItem,
-    status: outcome === "saved" ? "archived" : "failed",
-    updatedAt: Date.now(),
-    manualTabId: null,
-    lastError: outcome === "saved" ? undefined : failureMessage
-  };
-  await saveQueueItems(nextQueueItems);
-
-  if (Number.isInteger(queueItem.manualTabId)) {
-    await closeTabIfPresent(queueItem.manualTabId);
-  }
-
-  const pendingCount = nextQueueItems.filter((item) => item.status === "pending").length;
-  const manualRequiredCount = nextQueueItems.filter((item) => item.status === "manual_required").length;
-  const nextRuntimeStatus =
-    pendingCount > 0 ? "running" : manualRequiredCount > 0 ? "paused" : "idle";
-  const nextRuntime = {
-    ...clearQueueRuntimeActive(await getQueueRuntime()),
-    status: nextRuntimeStatus,
-    updatedAt: Date.now()
-  };
-  await saveQueueRuntime(nextRuntime);
-  await clearQueueAlarm();
-
-  if (nextRuntime.status === "running") {
-    runQueueEngineSoon("manual-resolution");
-  }
-
-  return createSuccess({
-    queueItems: nextQueueItems,
-    queueRuntime: nextRuntime
   });
 }
 
@@ -651,7 +571,6 @@ async function runQueueEngine(_trigger) {
         ...nextQueueItems[refreshedActiveIndex],
         status: "archived",
         updatedAt: Date.now(),
-        manualTabId: null,
         lastError: undefined
       };
       await saveQueueItems(nextQueueItems);
@@ -667,37 +586,13 @@ async function runQueueEngine(_trigger) {
       return;
     }
 
-    if (saveResult.requiresManual) {
-      nextQueueItems[refreshedActiveIndex] = {
-        ...nextQueueItems[refreshedActiveIndex],
-        status: "manual_required",
-        updatedAt: Date.now(),
-        manualTabId: activeTabId,
-        lastError:
-          typeof saveResult.details === "string" && saveResult.details.length > 0
-            ? saveResult.details
-            : QUEUE_MANUAL_PROVIDER_MESSAGE
-      };
-      await saveQueueItems(nextQueueItems);
-
-      queueRuntime = {
-        ...clearQueueRuntimeActive(await getQueueRuntime()),
-        status: "paused",
-        updatedAt: Date.now()
-      };
-      await saveQueueRuntime(queueRuntime);
-      await clearQueueAlarm();
-      return;
-    }
-
     nextQueueItems[refreshedActiveIndex] = {
       ...markQueueItemFailed(
         nextQueueItems[refreshedActiveIndex],
         typeof saveResult.error === "string" && saveResult.error.length > 0
           ? saveResult.error
           : "Snapshot save failed."
-      ),
-      manualTabId: null
+      )
     };
     await saveQueueItems(nextQueueItems);
     await closeTabIfPresent(activeTabId);
@@ -736,7 +631,6 @@ async function runQueueEngine(_trigger) {
     ...nextQueueItems[nextItemIndex],
     status: "opening_tab",
     attempts: nextQueueItems[nextItemIndex].attempts + 1,
-    manualTabId: null,
     updatedAt: Date.now()
   };
   nextQueueItems[nextItemIndex] = itemToRun;
@@ -911,7 +805,9 @@ async function closeTabIfPresent(tabId) {
 async function saveQueueItemWithProvider({ queueItem, tabId }) {
   const { provider, diagnostics } = await resolveSaveProvider({ tabId });
   if (!provider || typeof provider.saveWebPageWithSnapshot !== "function") {
-    const unavailableMessage = "No save provider is available.";
+    const unavailableMessage = diagnostics.connectorBridge.enabled
+      ? `Connector bridge is unavailable. ${diagnostics.connectorBridge.details}`
+      : CONNECTOR_BRIDGE_DISABLED_MESSAGE;
     await saveProviderDiagnostics({
       ...diagnostics,
       lastError: unavailableMessage,
@@ -953,21 +849,6 @@ async function saveQueueItemWithProvider({ queueItem, tabId }) {
     };
   }
 
-  if (providerResult?.requiresManual === true) {
-    await saveProviderDiagnostics({
-      ...diagnostics,
-      updatedAt: Date.now()
-    });
-    return {
-      ok: false,
-      requiresManual: true,
-      details:
-        typeof providerResult.details === "string" && providerResult.details.length > 0
-          ? providerResult.details
-          : QUEUE_MANUAL_PROVIDER_MESSAGE
-    };
-  }
-
   const providerError =
     typeof providerResult?.error === "string" && providerResult.error.length > 0
       ? providerResult.error
@@ -985,10 +866,9 @@ async function saveQueueItemWithProvider({ queueItem, tabId }) {
 
 async function resolveSaveProvider({ tabId = null } = {}) {
   const providerSettings = await getProviderSettings();
-  const manualProvider = createManualProvider();
-  let activeProvider = manualProvider;
+  let activeProvider = null;
   let connectorHealth = null;
-  let fallbackMessage = null;
+  let providerErrorMessage = null;
 
   if (providerSettings.connectorBridgeEnabled) {
     const connectorBridgeProvider = createConnectorBridgeProvider();
@@ -1004,7 +884,7 @@ async function resolveSaveProvider({ tabId = null } = {}) {
     if (connectorHealth.ok === true) {
       activeProvider = connectorBridgeProvider;
     } else {
-      fallbackMessage = `${CONNECTOR_BRIDGE_FALLBACK_MESSAGE} ${normalizeDetailsText(
+      providerErrorMessage = `${CONNECTOR_BRIDGE_FALLBACK_MESSAGE} ${normalizeDetailsText(
         connectorHealth?.details,
         "No connector bridge details were provided."
       )}`;
@@ -1019,13 +899,13 @@ async function resolveSaveProvider({ tabId = null } = {}) {
     : CONNECTOR_BRIDGE_DISABLED_MESSAGE;
 
   const diagnostics = {
-    activeMode: activeProvider.mode,
+    activeMode: activeProvider?.mode ?? "connector_bridge",
     connectorBridge: {
       enabled: providerSettings.connectorBridgeEnabled,
       healthy: providerSettings.connectorBridgeEnabled && connectorHealth?.ok === true,
       details: connectorDetails
     },
-    lastError: fallbackMessage,
+    lastError: providerErrorMessage,
     updatedAt: Date.now()
   };
 
@@ -1328,10 +1208,6 @@ function normalizeQueueItems(input) {
       queueItem.lastError = candidate.lastError.trim();
     }
 
-    if (Number.isInteger(candidate.manualTabId)) {
-      queueItem.manualTabId = candidate.manualTabId;
-    }
-
     normalized.push(queueItem);
   }
 
@@ -1395,7 +1271,6 @@ function markQueueItemFailed(queueItem, message) {
     ...queueItem,
     status: "failed",
     lastError: message,
-    manualTabId: null,
     updatedAt: Date.now()
   };
 }
