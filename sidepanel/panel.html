@@ -14,11 +14,23 @@
       </header>
 
       <section class="selectors" aria-live="polite">
-        <h2>Selector Rules</h2>
-        <ul id="selector-rules-list" class="selector-rules-list"></ul>
-        <div class="selector-actions">
-          <button id="add-rule-button" type="button">Add Rule</button>
-          <button id="save-rules-button" type="button">Save Rules</button>
+        <h2 class="section-heading">
+          <button
+            id="selectors-toggle-button"
+            class="section-toggle"
+            type="button"
+            aria-expanded="true"
+            aria-controls="selectors-body"
+          >
+            <span>Selector Rules</span>
+          </button>
+        </h2>
+        <div id="selectors-body" class="section-body">
+          <ul id="selector-rules-list" class="selector-rules-list"></ul>
+          <div class="selector-actions">
+            <button id="add-rule-button" type="button">Add Rule</button>
+            <button id="save-rules-button" type="button">Save Rules</button>
+          </div>
         </div>
       </section>
 
@@ -29,27 +41,39 @@
 
       <section class="results" aria-live="polite">
         <div class="results-header">
-          <h2 id="results-title">Collected Links (0)</h2>
+          <h2 class="section-heading">
+            <button
+              id="results-toggle-button"
+              class="section-toggle"
+              type="button"
+              aria-expanded="true"
+              aria-controls="results-body"
+            >
+              <span id="results-title">Collected Links (0)</span>
+            </button>
+          </h2>
           <p id="results-summary" class="results-summary"></p>
         </div>
-        <div class="results-controls">
-          <div class="results-selection-actions">
-            <button id="select-all-links-button" type="button">Select All</button>
-            <button id="deselect-all-links-button" type="button">Deselect All</button>
-            <button id="invert-links-button" type="button">Invert</button>
-            <button id="clear-all-links-button" type="button">Clear All</button>
+        <div id="results-body" class="section-body">
+          <div class="results-controls">
+            <div class="results-selection-actions">
+              <button id="select-all-links-button" type="button">Select All</button>
+              <button id="deselect-all-links-button" type="button">Deselect All</button>
+              <button id="invert-links-button" type="button">Invert</button>
+              <button id="clear-all-links-button" type="button">Clear All</button>
+            </div>
+            <label class="results-filter" for="results-filter-input">
+              <span>Filter</span>
+              <input
+                id="results-filter-input"
+                type="search"
+                placeholder="Filter by title or URL"
+                autocomplete="off"
+              >
+            </label>
           </div>
-          <label class="results-filter" for="results-filter-input">
-            <span>Filter</span>
-            <input
-              id="results-filter-input"
-              type="search"
-              placeholder="Filter by title or URL"
-              autocomplete="off"
-            >
-          </label>
+          <ul id="results-list" class="results-list"></ul>
         </div>
-        <ul id="results-list" class="results-list"></ul>
       </section>
 
       <section class="queue" aria-live="polite">

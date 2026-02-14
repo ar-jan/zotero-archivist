@@ -9,8 +9,12 @@ import {
 const collectButton = document.getElementById("collect-links-button");
 const addRuleButton = document.getElementById("add-rule-button");
 const saveRulesButton = document.getElementById("save-rules-button");
+const selectorsToggleButton = document.getElementById("selectors-toggle-button");
+const selectorsBodyEl = document.getElementById("selectors-body");
 const selectorRulesListEl = document.getElementById("selector-rules-list");
 const statusEl = document.getElementById("status");
+const resultsToggleButton = document.getElementById("results-toggle-button");
+const resultsBodyEl = document.getElementById("results-body");
 const resultsTitleEl = document.getElementById("results-title");
 const resultsSummaryEl = document.getElementById("results-summary");
 const resultsListEl = document.getElementById("results-list");
@@ -134,6 +138,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   handleStorageChange(changes, areaName);
 });
 
+initializeSectionToggle(selectorsToggleButton, selectorsBodyEl);
+initializeSectionToggle(resultsToggleButton, resultsBodyEl);
 renderIntegrationState();
 updateQueueActionState();
 
@@ -219,6 +225,21 @@ async function collectLinks() {
   } finally {
     collectButton.disabled = false;
   }
+}
+
+function initializeSectionToggle(toggleButton, sectionBody) {
+  if (!(toggleButton instanceof HTMLButtonElement) || !(sectionBody instanceof HTMLElement)) {
+    return;
+  }
+
+  const currentlyExpanded = toggleButton.getAttribute("aria-expanded") === "true";
+  sectionBody.hidden = !currentlyExpanded;
+
+  toggleButton.addEventListener("click", () => {
+    const nextExpanded = toggleButton.getAttribute("aria-expanded") !== "true";
+    toggleButton.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+    sectionBody.hidden = !nextExpanded;
+  });
 }
 
 function addSelectorRule() {

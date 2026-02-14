@@ -32,9 +32,50 @@ body {
   padding-top: 10px;
 }
 
-.selectors h2 {
-  margin: 0 0 10px;
+.section-heading {
+  margin: 0;
   font-size: 0.95rem;
+}
+
+.section-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 700;
+  gap: 6px;
+  margin: 0;
+  max-width: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.section-toggle::before {
+  content: "▸";
+  display: inline-block;
+  flex-shrink: 0;
+  transition: transform 120ms ease-in-out;
+}
+
+.section-toggle[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+.section-toggle > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-body[hidden] {
+  display: none;
+}
+
+.selectors .section-heading {
+  margin-bottom: 10px;
 }
 
 .selector-rules-list {
@@ -213,11 +254,6 @@ body {
 .results {
   border-top: 1px solid #ddd;
   padding-top: 10px;
-}
-
-.results h2 {
-  margin: 0;
-  font-size: 0.95rem;
 }
 
 .results-header {
