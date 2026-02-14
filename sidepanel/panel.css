@@ -426,13 +426,51 @@ body {
   margin-bottom: 8px;
 }
 
+.queue-settings {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  margin-bottom: 8px;
+}
+
+.queue-setting-field {
+  display: grid;
+  gap: 4px;
+}
+
+.queue-setting-field span {
+  color: #444;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+#queue-delay-seconds-input,
+#queue-jitter-seconds-input {
+  border: 1px solid #c8c8c8;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  padding: 6px 8px;
+}
+
+#save-queue-settings-button {
+  border: 1px solid #888;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 6px 10px;
+}
+
 #add-selected-to-queue-button,
 #clear-queue-button,
 #start-queue-button,
 #pause-queue-button,
 #resume-queue-button,
 #stop-queue-button,
-#retry-failed-queue-button {
+#retry-failed-queue-button,
+#save-queue-settings-button {
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.82rem;
@@ -472,7 +510,8 @@ body {
 #pause-queue-button[disabled],
 #resume-queue-button[disabled],
 #stop-queue-button[disabled],
-#retry-failed-queue-button[disabled] {
+#retry-failed-queue-button[disabled],
+#save-queue-settings-button[disabled] {
   cursor: default;
   opacity: 0.6;
 }

@@ -77,3 +77,31 @@ test("message router validates array payload contracts", async () => {
 
   assert.equal(validResponse.ok, true);
 });
+
+test("message router validates object payload contracts", async () => {
+  const invalidResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.SET_QUEUE_SETTINGS,
+      payload: {}
+    },
+    {
+      [MESSAGE_TYPES.SET_QUEUE_SETTINGS]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(invalidResponse.ok, false);
+  assert.equal(invalidResponse.error.code, "BAD_REQUEST");
+  assert.match(invalidResponse.error.message, /payload\.queueSettings/i);
+
+  const validResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.SET_QUEUE_SETTINGS,
+      payload: { queueSettings: { interItemDelayMs: 5000, interItemDelayJitterMs: 2000 } }
+    },
+    {
+      [MESSAGE_TYPES.SET_QUEUE_SETTINGS]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(validResponse.ok, true);
+});

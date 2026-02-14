@@ -103,7 +103,7 @@ The orchestrator health-checks the provider, persists diagnostics, and delegates
 Key message groups:
 - Panel state and collection: `GET_PANEL_STATE`, `COLLECT_LINKS`, `RUN_COLLECTOR`.
 - Link and selector updates: `SET_COLLECTED_LINKS`, `SET_SELECTOR_RULES`.
-- Queue authoring/lifecycle: `AUTHOR_QUEUE_FROM_SELECTION`, `START_QUEUE`, `PAUSE_QUEUE`, `RESUME_QUEUE`, `STOP_QUEUE`, `CLEAR_QUEUE`, `RETRY_FAILED_QUEUE`.
+- Queue authoring/lifecycle: `AUTHOR_QUEUE_FROM_SELECTION`, `SET_QUEUE_SETTINGS`, `START_QUEUE`, `PAUSE_QUEUE`, `RESUME_QUEUE`, `STOP_QUEUE`, `CLEAR_QUEUE`, `RETRY_FAILED_QUEUE`.
 
 `background/message-router.js` enforces payload contracts before dispatch.
 

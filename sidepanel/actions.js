@@ -20,6 +20,12 @@ export async function authorQueueFromSelectionAction(links) {
   });
 }
 
+export async function setQueueSettingsAction(queueSettings) {
+  return sendRuntimeMessage(MESSAGE_TYPES.SET_QUEUE_SETTINGS, {
+    queueSettings
+  });
+}
+
 export async function clearQueueAction() {
   return sendRuntimeMessage(MESSAGE_TYPES.CLEAR_QUEUE);
 }

@@ -2,6 +2,7 @@ import {
   createDefaultQueueRuntimeState,
   normalizeCollectedLinks,
   normalizeQueueItems,
+  normalizeQueueSettings,
   normalizeQueueRuntime
 } from "../shared/state.js";
 import {
@@ -15,6 +16,7 @@ export function createPanelStore(initialFilterQuery = "") {
     selectorRuleCounter: 0,
     collectedLinks: [],
     queueItems: [],
+    queueSettings: normalizeQueueSettings(undefined),
     queueRuntime: createDefaultQueueRuntimeState(),
     providerDiagnostics: createDefaultProviderDiagnostics(),
     resultsFilterQuery: initialFilterQuery,
@@ -73,6 +75,10 @@ export function createPanelStore(initialFilterQuery = "") {
     setQueueItems(queueItems) {
       state.queueItems = normalizeQueueItems(queueItems);
       return state.queueItems;
+    },
+    setQueueSettings(queueSettings) {
+      state.queueSettings = normalizeQueueSettings(queueSettings);
+      return state.queueSettings;
     },
     setQueueLifecycleInProgress(value) {
       state.queueLifecycleInProgress = Boolean(value);

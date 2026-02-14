@@ -17,6 +17,10 @@ const ARRAY_PAYLOAD_CONTRACTS = Object.freeze({
   [MESSAGE_TYPES.SET_SELECTOR_RULES]: "rules"
 });
 
+const OBJECT_PAYLOAD_CONTRACTS = Object.freeze({
+  [MESSAGE_TYPES.SET_QUEUE_SETTINGS]: "queueSettings"
+});
+
 export async function routeMessage(message, handlers) {
   if (!message || typeof message !== "object" || typeof message.type !== "string") {
     return createError(ERROR_CODES.BAD_REQUEST, "Invalid runtime message.");
@@ -45,6 +49,19 @@ function validateMessagePayload(message) {
 
   const arrayPayloadField = ARRAY_PAYLOAD_CONTRACTS[message.type];
   if (!arrayPayloadField) {
+    const objectPayloadField = OBJECT_PAYLOAD_CONTRACTS[message.type];
+    if (!objectPayloadField) {
+      return null;
+    }
+
+    if (!isPlainObject(message.payload)) {
+      return `Message type ${message.type} requires a payload object.`;
+    }
+
+    if (!isPlainObject(message.payload[objectPayloadField])) {
+      return `Message type ${message.type} requires payload.${objectPayloadField} to be an object.`;
+    }
+
     return null;
   }
 

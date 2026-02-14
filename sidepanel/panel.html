@@ -92,6 +92,29 @@
           <button id="stop-queue-button" type="button">Stop</button>
           <button id="retry-failed-queue-button" type="button">Retry Failed</button>
         </div>
+        <div class="queue-settings">
+          <label class="queue-setting-field" for="queue-delay-seconds-input">
+            <span>Delay (seconds)</span>
+            <input
+              id="queue-delay-seconds-input"
+              type="number"
+              min="0"
+              step="0.1"
+              inputmode="decimal"
+            >
+          </label>
+          <label class="queue-setting-field" for="queue-jitter-seconds-input">
+            <span>Jitter +/- (seconds)</span>
+            <input
+              id="queue-jitter-seconds-input"
+              type="number"
+              min="0"
+              step="0.1"
+              inputmode="decimal"
+            >
+          </label>
+          <button id="save-queue-settings-button" type="button">Save Queue Settings</button>
+        </div>
         <p id="queue-runtime-status" class="queue-runtime-status"></p>
         <ul id="queue-list" class="queue-list"></ul>
       </section>

@@ -8,6 +8,20 @@ test("panel store normalizes provider settings and diagnostics defaults", () => 
 
   assert.equal(panelStore.state.providerDiagnostics.connectorBridge.enabled, true);
   assert.equal(panelStore.state.providerDiagnostics.connectorBridge.healthy, false);
+  assert.equal(panelStore.state.queueSettings.interItemDelayMs, 5000);
+  assert.equal(panelStore.state.queueSettings.interItemDelayJitterMs, 2000);
+});
+
+test("panel store normalizes queue settings updates", () => {
+  const panelStore = createPanelStore();
+
+  const queueSettings = panelStore.setQueueSettings({
+    interItemDelayMs: -1,
+    interItemDelayJitterMs: 999999
+  });
+
+  assert.equal(queueSettings.interItemDelayMs, 0);
+  assert.equal(queueSettings.interItemDelayJitterMs, 60000);
 });
 
 test("panel store tracks integration in-progress state separately from queue state", () => {

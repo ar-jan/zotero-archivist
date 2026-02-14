@@ -3,7 +3,7 @@ import {
   STORAGE_KEYS,
   isHttpUrl
 } from "../shared/protocol.js";
-import { getQueueItemCounts } from "../shared/state.js";
+import { getQueueItemCounts, normalizeQueueSettings } from "../shared/state.js";
 import {
   authorQueueFromSelectionAction,
   clearQueueAction,
@@ -14,6 +14,7 @@ import {
   getPanelStateAction,
   queueLifecycleAction,
   setCollectedLinksAction,
+  setQueueSettingsAction,
   setSelectorRulesAction
 } from "./actions.js";
 import {
@@ -58,6 +59,9 @@ const pauseQueueButton = document.getElementById("pause-queue-button");
 const resumeQueueButton = document.getElementById("resume-queue-button");
 const stopQueueButton = document.getElementById("stop-queue-button");
 const retryFailedQueueButton = document.getElementById("retry-failed-queue-button");
+const queueDelaySecondsInput = document.getElementById("queue-delay-seconds-input");
+const queueJitterSecondsInput = document.getElementById("queue-jitter-seconds-input");
+const saveQueueSettingsButton = document.getElementById("save-queue-settings-button");
 const rulesSummaryEl = document.getElementById("rules-summary");
 const integrationModeEl = document.getElementById("integration-mode");
 const refreshDiagnosticsButton = document.getElementById("refresh-diagnostics-button");
@@ -70,8 +74,11 @@ const integrationZoteroRowEl = document.getElementById("integration-zotero-row")
 const integrationZoteroStatusEl = document.getElementById("integration-zotero-status");
 const integrationErrorEl = document.getElementById("integration-error");
 
+const QUEUE_SETTINGS_MILLISECONDS_PER_SECOND = 1000;
+
 const panelStore = createPanelStore(normalizeFilterQueryValue(resultsFilterInput.value));
 const panelState = panelStore.state;
+let queueSettingsSaveInProgress = false;
 
 const queueController = createQueueController({
   panelStore,
@@ -187,6 +194,10 @@ retryFailedQueueButton.addEventListener("click", () => {
   void queueController.retryFailedQueueItems();
 });
 
+saveQueueSettingsButton.addEventListener("click", () => {
+  void saveQueueSettings();
+});
+
 refreshDiagnosticsButton.addEventListener("click", () => {
   void refreshIntegrationDiagnostics();
 });
@@ -199,6 +210,7 @@ initializeSectionToggle(selectorsToggleButton, selectorsBodyEl);
 initializeSectionToggle(resultsToggleButton, resultsBodyEl);
 renderIntegrationState();
 updateQueueActionState();
+updateQueueSettingsActionState();
 
 void loadPanelState();
 
@@ -215,6 +227,7 @@ async function loadPanelState() {
   const selectorRules = selectorController.normalizeSelectorRules(response.selectorRules);
   selectorController.renderSelectorRules(selectorRules);
   setCollectedLinksState(response.collectedLinks);
+  setQueueSettingsState(response.queueSettings);
   setQueueItemsState(response.queueItems);
   setQueueRuntimeState(response.queueRuntime);
   setProviderDiagnosticsState(response.providerDiagnostics);
@@ -286,6 +299,11 @@ function setQueueItemsState(queueItems) {
   renderQueueRuntimeStatus(panelState.queueRuntime);
 }
 
+function setQueueSettingsState(queueSettings) {
+  panelStore.setQueueSettings(queueSettings);
+  renderQueueSettingsForm(panelState.queueSettings);
+}
+
 function setQueueRuntimeState(queueRuntime) {
   panelStore.setQueueRuntime(queueRuntime);
   renderQueueRuntimeStatus(panelState.queueRuntime);
@@ -310,6 +328,11 @@ function handleStorageChange(changes, areaName) {
   const queueRuntimeChange = changes[STORAGE_KEYS.QUEUE_RUNTIME];
   if (queueRuntimeChange) {
     setQueueRuntimeState(queueRuntimeChange.newValue);
+  }
+
+  const queueSettingsChange = changes[STORAGE_KEYS.QUEUE_SETTINGS];
+  if (queueSettingsChange) {
+    setQueueSettingsState(queueSettingsChange.newValue);
   }
 
   const providerDiagnosticsChange = changes[STORAGE_KEYS.PROVIDER_DIAGNOSTICS];
@@ -397,6 +420,80 @@ function isQueueBusy() {
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function renderQueueSettingsForm(queueSettings) {
+  const normalizedQueueSettings = normalizeQueueSettings(queueSettings);
+  queueDelaySecondsInput.value = formatSecondsInput(normalizedQueueSettings.interItemDelayMs);
+  queueJitterSecondsInput.value = formatSecondsInput(normalizedQueueSettings.interItemDelayJitterMs);
+}
+
+function updateQueueSettingsActionState() {
+  saveQueueSettingsButton.disabled = queueSettingsSaveInProgress;
+}
+
+function setQueueSettingsSaveInProgress(value) {
+  queueSettingsSaveInProgress = Boolean(value);
+  updateQueueSettingsActionState();
+}
+
+async function saveQueueSettings() {
+  const normalizedQueueSettings = readQueueSettingsFromInputs();
+  if (!normalizedQueueSettings) {
+    return;
+  }
+
+  setQueueSettingsSaveInProgress(true);
+  try {
+    const response = await setQueueSettingsAction(normalizedQueueSettings);
+    if (!response || response.ok !== true) {
+      setStatus(messageFromError(response?.error) ?? "Failed to save queue settings.");
+      return;
+    }
+
+    const savedQueueSettings = normalizeQueueSettings(response.queueSettings);
+    setQueueSettingsState(savedQueueSettings);
+    setStatus(
+      `Queue delay set to ${formatSecondsLabel(savedQueueSettings.interItemDelayMs)} +/- ${formatSecondsLabel(savedQueueSettings.interItemDelayJitterMs)}.`
+    );
+  } catch (error) {
+    console.error("[zotero-archivist] Failed to save queue settings.", error);
+    setStatus("Failed to save queue settings.");
+  } finally {
+    setQueueSettingsSaveInProgress(false);
+  }
+}
+
+function readQueueSettingsFromInputs() {
+  const delaySeconds = Number.parseFloat(queueDelaySecondsInput.value);
+  const jitterSeconds = Number.parseFloat(queueJitterSecondsInput.value);
+
+  if (!Number.isFinite(delaySeconds) || delaySeconds < 0) {
+    setStatus("Queue delay must be a number >= 0.");
+    return null;
+  }
+
+  if (!Number.isFinite(jitterSeconds) || jitterSeconds < 0) {
+    setStatus("Queue jitter must be a number >= 0.");
+    return null;
+  }
+
+  return normalizeQueueSettings({
+    interItemDelayMs: Math.round(delaySeconds * QUEUE_SETTINGS_MILLISECONDS_PER_SECOND),
+    interItemDelayJitterMs: Math.round(jitterSeconds * QUEUE_SETTINGS_MILLISECONDS_PER_SECOND)
+  });
+}
+
+function formatSecondsInput(milliseconds) {
+  const seconds = milliseconds / QUEUE_SETTINGS_MILLISECONDS_PER_SECOND;
+  if (Number.isInteger(seconds)) {
+    return String(seconds);
+  }
+  return String(Number(seconds.toFixed(3)));
+}
+
+function formatSecondsLabel(milliseconds) {
+  return `${formatSecondsInput(milliseconds)}s`;
 }
 
 function messageFromError(error) {

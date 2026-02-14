@@ -31,6 +31,7 @@ import {
   saveCollectedLinks,
   saveProviderDiagnostics,
   saveQueueItems,
+  saveQueueSettings,
   saveQueueRuntime,
   saveSelectorRules
 } from "./storage-repo.js";
@@ -62,6 +63,8 @@ const messageHandlers = {
   [MESSAGE_TYPES.SET_COLLECTED_LINKS]: async (message) => setCollectedLinks(message.payload?.links),
   [MESSAGE_TYPES.AUTHOR_QUEUE_FROM_SELECTION]: async (message) =>
     authorQueueFromSelection(message.payload?.links),
+  [MESSAGE_TYPES.SET_QUEUE_SETTINGS]: async (message) =>
+    setQueueSettings(message.payload?.queueSettings),
   [MESSAGE_TYPES.CLEAR_QUEUE]: async () => queueLifecycleHandlers.clearQueue(),
   [MESSAGE_TYPES.START_QUEUE]: async () => queueLifecycleHandlers.startQueue(),
   [MESSAGE_TYPES.PAUSE_QUEUE]: async () => queueLifecycleHandlers.pauseQueue(),
@@ -137,6 +140,7 @@ async function configureSidePanelBehavior() {
 async function getPanelState() {
   const selectorRules = await getSelectorRules();
   const collectedLinks = await getCollectedLinks();
+  const queueSettings = await getQueueSettings();
   const queueItems = await getQueueItems();
   const queueRuntime = await getQueueRuntime();
   const providerDiagnostics = await providerOrchestrator.refreshProviderDiagnostics();
@@ -144,6 +148,7 @@ async function getPanelState() {
   return {
     selectorRules,
     collectedLinks,
+    queueSettings,
     queueItems,
     queueRuntime,
     providerDiagnostics
@@ -297,6 +302,13 @@ async function setSelectorRules(rawRules) {
 
   return createSuccess({
     selectorRules: sanitizedRules
+  });
+}
+
+async function setQueueSettings(rawQueueSettings) {
+  const queueSettings = await saveQueueSettings(rawQueueSettings);
+  return createSuccess({
+    queueSettings
   });
 }
 
