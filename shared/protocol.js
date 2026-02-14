@@ -42,7 +42,7 @@ export const SAVE_PROVIDER_MODES = Object.freeze({
 });
 
 export const DEFAULT_PROVIDER_SETTINGS = Object.freeze({
-  connectorBridgeEnabled: false
+  connectorBridgeEnabled: true
 });
 
 export const DEFAULT_SELECTOR_RULES = Object.freeze([

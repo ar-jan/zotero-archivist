@@ -1364,13 +1364,16 @@ function normalizeProviderSettings(input) {
   }
 
   return {
-    connectorBridgeEnabled: input.connectorBridgeEnabled === true
+    connectorBridgeEnabled:
+      typeof input.connectorBridgeEnabled === "boolean"
+        ? input.connectorBridgeEnabled
+        : createDefaultProviderSettingsState().connectorBridgeEnabled
   };
 }
 
 function createDefaultProviderSettingsState() {
   return {
-    connectorBridgeEnabled: false
+    connectorBridgeEnabled: true
   };
 }
 
@@ -1381,6 +1384,11 @@ function normalizeProviderDiagnostics(input) {
 
   const connectorBridgeInput =
     input.connectorBridge && typeof input.connectorBridge === "object" ? input.connectorBridge : {};
+  const defaultConnectorBridgeEnabled = createDefaultProviderSettingsState().connectorBridgeEnabled;
+  const connectorBridgeEnabled =
+    typeof connectorBridgeInput.enabled === "boolean"
+      ? connectorBridgeInput.enabled
+      : defaultConnectorBridgeEnabled;
   const activeMode =
     typeof input.activeMode === "string" && input.activeMode.length > 0
       ? input.activeMode
@@ -1389,12 +1397,12 @@ function normalizeProviderDiagnostics(input) {
   return {
     activeMode,
     connectorBridge: {
-      enabled: connectorBridgeInput.enabled === true,
+      enabled: connectorBridgeEnabled,
       healthy: connectorBridgeInput.healthy === true,
       details:
         typeof connectorBridgeInput.details === "string" && connectorBridgeInput.details.trim().length > 0
           ? connectorBridgeInput.details.trim()
-          : connectorBridgeInput.enabled === true
+          : connectorBridgeEnabled
             ? "Connector bridge status unknown."
             : "Connector bridge is disabled."
     },
@@ -1411,9 +1419,9 @@ function createDefaultProviderDiagnosticsState() {
   return {
     activeMode: "connector_bridge",
     connectorBridge: {
-      enabled: false,
+      enabled: true,
       healthy: false,
-      details: "Connector bridge is disabled."
+      details: "Connector bridge status unknown."
     },
     lastError: null,
     updatedAt: Date.now()

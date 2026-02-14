@@ -46,6 +46,6 @@ Last updated: 2026-02-14
 
 - Queue save step now uses provider selection instead of hardcoded pause logic.
 - Queue save flow is fully automated; failed saves move items directly to `failed` with details.
-- Added integration section in side panel with connector-bridge experimental toggle and live provider diagnostics.
+- Added integration section in side panel with connector-bridge toggle and live provider diagnostics.
 - Connector bridge provider now probes and executes `Connector_Browser.saveAsWebpage(..., { snapshot: true })` via the iframe/port bridge.
 - Bridge failures now fail closed and expose reason details in diagnostics.

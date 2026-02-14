@@ -65,7 +65,7 @@
    - Evaluates selector rules and returns normalized candidates
 
 4. `zotero/providers/*`
-   - `connectorBridgeProvider` (advanced/experimental)
+   - `connectorBridgeProvider` (default provider)
    - `localApiProvider` (future option)
 
 5. `shared/protocol.js`
@@ -198,7 +198,7 @@ Current Phase 3 behavior (2026-02-14):
 1. Queue controls (`start`, `pause`, `resume`, `stop`, `retry failed`) are wired in the side panel and background runtime.
 2. `pending -> opening_tab -> saving_snapshot` now routes through provider orchestration in background.
 3. Queue save completion/failure is fully automated; there is no user-confirmation queue state.
-4. Connector bridge is feature-flagged and health-checked; when unavailable, save attempts fail with explicit diagnostics.
+4. Connector bridge is toggle-controlled and health-checked; when unavailable, save attempts fail with explicit diagnostics.
 
 ## 9) URL Collection Flow
 
@@ -365,4 +365,4 @@ MVP should be considered complete when:
 1. Side panel workflow is fully functional using native `chrome.sidePanel`.
 2. URL collection and curation are stable on modern sites.
 3. Queue is restart-safe under MV3 worker suspension.
-4. Connector bridge mode works as an opt-in path with clear diagnostics on failure.
+4. Connector bridge mode is enabled by default and provides clear diagnostics on failure.

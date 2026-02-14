@@ -6,7 +6,10 @@ export function normalizeProviderSettings(input) {
   }
 
   return {
-    connectorBridgeEnabled: input.connectorBridgeEnabled === true
+    connectorBridgeEnabled:
+      typeof input.connectorBridgeEnabled === "boolean"
+        ? input.connectorBridgeEnabled
+        : DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled
   };
 }
 
@@ -14,9 +17,11 @@ export function createDefaultProviderDiagnostics() {
   return {
     activeMode: SAVE_PROVIDER_MODES.CONNECTOR_BRIDGE,
     connectorBridge: {
-      enabled: false,
+      enabled: DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled,
       healthy: false,
-      details: "Connector bridge is disabled."
+      details: DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled
+        ? "Connector bridge status unknown."
+        : "Connector bridge is disabled."
     },
     lastError: null,
     updatedAt: Date.now()
@@ -68,21 +73,23 @@ export function createProviderSaveError(error) {
 }
 
 function normalizeConnectorBridgeDiagnostics(input) {
+  const defaultEnabled = DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled;
   if (!input || typeof input !== "object") {
     return {
-      enabled: false,
+      enabled: defaultEnabled,
       healthy: false,
-      details: "Connector bridge is disabled."
+      details: defaultEnabled ? "Connector bridge status unknown." : "Connector bridge is disabled."
     };
   }
 
+  const enabled = typeof input.enabled === "boolean" ? input.enabled : defaultEnabled;
   return {
-    enabled: input.enabled === true,
+    enabled,
     healthy: input.healthy === true,
     details:
       typeof input.details === "string" && input.details.trim().length > 0
         ? input.details.trim()
-        : input.enabled === true
+        : enabled
           ? "Connector bridge status unknown."
           : "Connector bridge is disabled."
   };
