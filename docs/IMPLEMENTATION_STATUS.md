@@ -64,6 +64,8 @@ Last updated: 2026-02-14
   - `sidepanel/actions.js`
   - `sidepanel/render.js`
   - `sidepanel/queue-controller.js`
+  - `sidepanel/selector-controller.js`
+  - `sidepanel/link-curation-controller.js`
 - Added contract-style tests for shared normalization and routing behavior in `tests/shared-state.test.mjs`.
 - Added queue-engine transition tests in `tests/queue-engine.test.mjs` covering:
   - pending -> opening_tab
@@ -83,12 +85,16 @@ Last updated: 2026-02-14
   - Manual diagnostics refresh action and last-check timestamp.
   - Store-level coverage in `tests/panel-store.test.mjs`.
 - Added sidepanel queue controller tests in `tests/queue-controller.test.mjs`.
+- Added sidepanel selector/link curation hardening tests:
+  - `tests/selector-controller.test.mjs` for selector validation/heading/default rule contracts.
+  - `tests/link-curation-controller.test.mjs` for selection transitions and persisted curation behavior.
 - Removed dead provider-settings surface (`SET_PROVIDER_SETTINGS`) from runtime protocol/routes.
 
 ## Post-Refactor TODOs
 
 - [ ] Phase 4: Add diagnostics, contract tests, and hardening.
   - Why: This is the remaining planned phase and the main gap between feature completion and production readiness.
+  - Progress: Added sidepanel selector/link curation contract-style tests to expand UI-state hardening coverage.
 
 - [x] Add queue-engine transition tests.
   - Scope:
@@ -112,11 +118,11 @@ Last updated: 2026-02-14
   - Why: Partially wired paths increase maintenance cost and create confusion about supported configuration.
   - Note: Removed dead provider-settings surface area (`SET_PROVIDER_SETTINGS`) until an alternative provider exists.
 
-- [ ] Continue splitting sidepanel orchestration into smaller controllers.
+- [x] Continue splitting sidepanel orchestration into smaller controllers.
   - Scope:
     - Incrementally separate selector editing, link curation, and queue lifecycle orchestration in `sidepanel/panel.js`.
   - Why: Smaller feature-focused modules improve readability, lower merge conflict risk, and make testing easier.
-  - Progress: Queue lifecycle/authoring/clear orchestration moved to `sidepanel/queue-controller.js`; selector editing and link curation remain.
+  - Note: Selector editing moved to `sidepanel/selector-controller.js` and link curation/persistence moved to `sidepanel/link-curation-controller.js`; `sidepanel/panel.js` now composes controllers.
 
 - [x] Add a stable test command entrypoint.
   - Scope:
