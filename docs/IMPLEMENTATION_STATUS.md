@@ -88,13 +88,18 @@ Last updated: 2026-02-14
 - Added sidepanel selector/link curation hardening tests:
   - `tests/selector-controller.test.mjs` for selector validation/heading/default rule contracts.
   - `tests/link-curation-controller.test.mjs` for selection transitions and persisted curation behavior.
+- Added background hardening tests:
+  - `tests/message-router.test.mjs` for runtime message routing contract behavior.
+  - `tests/storage-repo.test.mjs` for storage normalization/writeback behavior.
 - Removed dead provider-settings surface (`SET_PROVIDER_SETTINGS`) from runtime protocol/routes.
 
 ## Post-Refactor TODOs
 
 - [ ] Phase 4: Add diagnostics, contract tests, and hardening.
   - Why: This is the remaining planned phase and the main gap between feature completion and production readiness.
-  - Progress: Added sidepanel selector/link curation contract-style tests to expand UI-state hardening coverage.
+  - Progress:
+    - Added sidepanel selector/link curation contract-style tests.
+    - Added background message-router/storage-repo hardening tests.
 
 - [x] Add queue-engine transition tests.
   - Scope:
