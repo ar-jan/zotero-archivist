@@ -10,6 +10,8 @@ const CONNECTOR_BRIDGE_IFRAME_PATH = "chromeMessageIframe/messageIframe.html";
 const BRIDGE_HEALTH_TIMEOUT_MS = 4000;
 const BRIDGE_SAVE_TIMEOUT_MS = 120000;
 const BRIDGE_DEFAULT_FRAME_TIMEOUT_MS = 8000;
+const CONNECTOR_OFFLINE_MESSAGE =
+  "Zotero Connector reports the local Zotero client as offline for bridge save.";
 const BRIDGE_UNCONFIRMED_SAVE_MESSAGE =
   "Connector bridge did not confirm a completed save. Verify save in Zotero and mark manually.";
 
@@ -27,14 +29,25 @@ export function createConnectorBridgeProvider() {
       const probeResult = await runBridgeCommand({
         tabId: input.tabId,
         timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
-        command: ["Connector_Browser.shouldKeepServiceWorkerAlive", []]
+        command: ["Connector.checkIsOnline", []]
       });
+      if (!probeResult.ok) {
+        return {
+          ok: false,
+          details: `Connector bridge probe failed: ${probeResult.error}`
+        };
+      }
+
+      if (probeResult.result !== true) {
+        return {
+          ok: false,
+          details: CONNECTOR_OFFLINE_MESSAGE
+        };
+      }
 
       return {
-        ok: probeResult.ok,
-        details: probeResult.ok
-          ? "Connector bridge channel is reachable."
-          : `Connector bridge probe failed: ${probeResult.error}`
+        ok: true,
+        details: "Connector bridge channel is reachable and Zotero client is online."
       };
     },
     async saveWebPageWithSnapshot(input) {
@@ -78,10 +91,25 @@ export function createConnectorBridgeProvider() {
         );
       }
 
+      const onlineResult = await runBridgeCommand({
+        tabId: input.tabId,
+        timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
+        command: ["Connector.checkIsOnline", []]
+      });
+      if (!onlineResult.ok) {
+        return createProviderSaveError(`Connector bridge online check failed: ${onlineResult.error}`);
+      }
+      if (onlineResult.result !== true) {
+        return createProviderSaveManual(CONNECTOR_OFFLINE_MESSAGE);
+      }
+
       const saveResult = await runBridgeCommand({
         tabId: input.tabId,
         timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
-        command: ["Connector_Browser.saveAsWebpage", [tabPayload, 0, { snapshot: true }]]
+        command: [
+          "Messaging.sendMessage",
+          ["saveAsWebpage", [tabPayload.title, { snapshot: true }], tabPayload.id, 0]
+        ]
       });
       if (!saveResult.ok) {
         return createProviderSaveError(`Connector bridge save failed: ${saveResult.error}`);
