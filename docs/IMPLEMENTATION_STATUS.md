@@ -38,3 +38,10 @@ Last updated: 2026-02-14
 - [x] Phase 2: Implement MV3-safe queue engine with persisted state transitions.
 - [ ] Phase 3: Implement save providers (manual first, connector bridge behind feature flag).
 - [ ] Phase 4: Add diagnostics, contract tests, and hardening.
+
+## Phase 2 Notes (Current)
+
+- Added queue lifecycle controls in side panel: `Start`, `Pause`, `Resume`, `Stop`, `Retry Failed`.
+- Added queue runtime persistence in `chrome.storage.local` (`queueRuntime`) with restart-safe state recovery.
+- Added queue progression via `tabs.onUpdated` and `tabs.onRemoved`, plus `chrome.alarms` watchdog handling.
+- Current queue processing intentionally pauses at `manual_required` because save providers are Phase 3 work.

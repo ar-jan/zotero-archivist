@@ -115,6 +115,7 @@ zotero-archivist/
 
 1. Required:
    - `storage`
+   - `alarms` (required once queue engine watchdog is enabled)
    - `tabs`
    - `scripting`
    - `sidePanel`
@@ -180,18 +181,26 @@ type SaveProviderMode = "connector_bridge" | "manual" | "local_api";
 Use a deterministic state machine with persisted checkpoints.
 
 1. Store durable queue state in `chrome.storage.local`.
-2. Store transient execution pointers in `chrome.storage.session` when available.
-3. Use event-driven progression:
+2. Store queue runtime pointers (`status`, `activeQueueItemId`, `activeTabId`) in `chrome.storage.local` for restart safety.
+3. Optionally mirror transient execution pointers to `chrome.storage.session` in future as a non-authoritative cache.
+4. Use event-driven progression:
    - `tabs.onUpdated` for load-complete
+   - `tabs.onRemoved` for unexpected queue tab closure
    - explicit step commits per item
-4. Use `chrome.alarms` for watchdog/retry and recovery after worker suspend.
-5. Default concurrency = `1` for predictable Zotero behavior.
+5. Use `chrome.alarms` for watchdog/retry and recovery after worker suspend.
+6. Default concurrency = `1` for predictable Zotero behavior.
 
 State transitions:
 
 1. `pending -> opening_tab -> saving_snapshot -> archived`
 2. `saving_snapshot -> manual_required` on unsupported provider errors
 3. Any active state -> `failed` on terminal error/timeout
+
+Current Phase 2 behavior (2026-02-14):
+
+1. Queue controls (`start`, `pause`, `resume`, `stop`, `retry failed`) are wired in the side panel and background runtime.
+2. `pending -> opening_tab -> saving_snapshot -> manual_required` is currently the expected flow until Phase 3 save providers land.
+3. When `manual_required` is reached, queue runtime transitions to `paused` and waits for user action.
 
 ## 9) URL Collection Flow
 
@@ -280,10 +289,11 @@ interface ZoteroSaveProvider {
    - safe non-sensitive defaults
 2. `chrome.storage.local`:
    - queue items
+   - queue runtime state (`queueRuntime`)
    - queue history
    - provider diagnostics
 3. `chrome.storage.session`:
-   - current run pointer
+   - optional future mirror of current run pointer
    - in-progress tab IDs
    - temporary retries
 
