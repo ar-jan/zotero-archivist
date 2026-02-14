@@ -150,6 +150,7 @@ async function runBridgeCommand({ tabId, timeoutMs, command }) {
 
   let injectionResult;
   try {
+    const workerCommand = [commandName, commandArgs, tabId, 0];
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: executeConnectorBridgeCommandInTab,
@@ -158,8 +159,7 @@ async function runBridgeCommand({ tabId, timeoutMs, command }) {
           connectorExtensionId: CONNECTOR_EXTENSION_ID,
           connectorBridgeIframePath: CONNECTOR_BRIDGE_IFRAME_PATH,
           timeoutMs: normalizeTimeoutMs(timeoutMs),
-          commandName,
-          commandArgs
+          workerCommand
         }
       ]
     });
@@ -239,10 +239,9 @@ async function executeConnectorBridgeCommandInTab(input) {
       : "chromeMessageIframe/messageIframe.html";
   const timeoutMs =
     Number.isFinite(input?.timeoutMs) && input.timeoutMs > 0 ? Math.trunc(input.timeoutMs) : 8000;
-  const commandName = typeof input?.commandName === "string" ? input.commandName : "";
-  const commandArgs = Array.isArray(input?.commandArgs) ? input.commandArgs : null;
+  const workerCommand = Array.isArray(input?.workerCommand) ? input.workerCommand : null;
 
-  if (!connectorExtensionId || !commandName || !commandArgs) {
+  if (!connectorExtensionId || !workerCommand || workerCommand.length < 2) {
     return {
       ok: false,
       error: "Connector bridge invocation parameters are invalid."
@@ -258,7 +257,7 @@ async function executeConnectorBridgeCommandInTab(input) {
     port = await initializeBridgePort(iframe, timeoutMs);
 
     const responsePayload = await sendBridgeMessage(port, "sendToBackground", [
-      [commandName, commandArgs]
+      workerCommand
     ], timeoutMs);
 
     if (Array.isArray(responsePayload) && responsePayload[0] === "error") {
