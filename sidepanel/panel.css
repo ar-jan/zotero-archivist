@@ -198,7 +198,7 @@ body {
 }
 
 #select-all-links-button,
-#clear-all-links-button,
+#deselect-all-links-button,
 #invert-links-button {
   border: 1px solid #888;
   border-radius: 6px;
@@ -210,8 +210,23 @@ body {
 }
 
 #select-all-links-button[disabled],
-#clear-all-links-button[disabled],
+#deselect-all-links-button[disabled],
 #invert-links-button[disabled] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+#clear-all-links-button {
+  border: 1px solid #b42318;
+  border-radius: 6px;
+  background: #b42318;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 5px 8px;
+}
+
+#clear-all-links-button[disabled] {
   cursor: default;
   opacity: 0.6;
 }

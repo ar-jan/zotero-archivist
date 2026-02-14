@@ -15,6 +15,7 @@ const resultsTitleEl = document.getElementById("results-title");
 const resultsSummaryEl = document.getElementById("results-summary");
 const resultsListEl = document.getElementById("results-list");
 const selectAllLinksButton = document.getElementById("select-all-links-button");
+const deselectAllLinksButton = document.getElementById("deselect-all-links-button");
 const clearAllLinksButton = document.getElementById("clear-all-links-button");
 const invertLinksButton = document.getElementById("invert-links-button");
 const resultsFilterInput = document.getElementById("results-filter-input");
@@ -80,12 +81,16 @@ selectAllLinksButton.addEventListener("click", () => {
   void setFilteredLinksSelectedState(true);
 });
 
-clearAllLinksButton.addEventListener("click", () => {
+deselectAllLinksButton.addEventListener("click", () => {
   void setFilteredLinksSelectedState(false);
 });
 
 invertLinksButton.addEventListener("click", () => {
   void invertFilteredLinkSelection();
+});
+
+clearAllLinksButton.addEventListener("click", () => {
+  void clearCollectedLinks();
 });
 
 resultsFilterInput.addEventListener("input", () => {
@@ -880,7 +885,7 @@ async function setFilteredLinksSelectedState(nextSelectedState) {
     setStatus(
       nextSelectedState
         ? "Filtered links are already selected."
-        : "Filtered links are already cleared."
+        : "Filtered links are already deselected."
     );
     return;
   }
@@ -888,7 +893,7 @@ async function setFilteredLinksSelectedState(nextSelectedState) {
   setCollectedLinksState(nextLinks);
   const persisted = await persistCollectedLinks();
   if (persisted) {
-    setStatus(`${nextSelectedState ? "Selected" : "Cleared"} ${changedCount} filtered link(s).`);
+    setStatus(`${nextSelectedState ? "Selected" : "Deselected"} ${changedCount} filtered link(s).`);
   }
 }
 
@@ -917,6 +922,20 @@ async function invertFilteredLinkSelection() {
   const persisted = await persistCollectedLinks();
   if (persisted) {
     setStatus(`Inverted selection for ${changedCount} filtered link(s).`);
+  }
+}
+
+async function clearCollectedLinks() {
+  const removedCount = collectedLinksState.length;
+  if (removedCount === 0) {
+    setStatus("No collected links to clear.");
+    return;
+  }
+
+  setCollectedLinksState([]);
+  const persisted = await persistCollectedLinks();
+  if (persisted) {
+    setStatus(`Cleared ${removedCount} collected link(s).`);
   }
 }
 
@@ -1119,11 +1138,13 @@ function updateResultsSummary({ selectedCount, totalCount, filteredCount }) {
 
 function updateResultsControlState({ totalCount, filteredCount }) {
   const hasFilteredLinks = filteredCount > 0;
+  const hasCollectedLinks = totalCount > 0;
 
   resultsFilterInput.disabled = false;
   selectAllLinksButton.disabled = !hasFilteredLinks;
-  clearAllLinksButton.disabled = !hasFilteredLinks;
+  deselectAllLinksButton.disabled = !hasFilteredLinks;
   invertLinksButton.disabled = !hasFilteredLinks;
+  clearAllLinksButton.disabled = !hasCollectedLinks;
   updateQueueActionState();
 }
 
