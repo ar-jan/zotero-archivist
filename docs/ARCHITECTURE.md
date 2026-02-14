@@ -247,7 +247,15 @@ interface ZoteroSaveProvider {
    - compatibility/version probes
    - fail-closed behavior with explicit diagnostics
 
-## 10.4 Failure handling
+## 10.4 Connector completion semantics
+
+1. Archivist treats a bridge call as successful when `Messaging.sendMessage("saveAsWebpage", ...)` resolves without throwing.
+2. Archivist treats connector rejection/throw as a save failure.
+3. There is no stable external callback that confirms completion beyond this bridge response contract.
+4. Connector popup events (for example `progressWindow.done`) are internal connector messages and are not used as Archivist success signals.
+5. This contract is based on current connector internals and should be revalidated when connector versions change.
+
+## 10.5 Failure handling
 
 1. Queue items move to `failed` when save commands error or time out.
 2. Errors are surfaced in queue item `lastError` and provider diagnostics.
