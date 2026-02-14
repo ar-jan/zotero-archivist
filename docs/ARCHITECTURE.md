@@ -78,13 +78,17 @@ zotero-archivist/
 ├── manifest.json
 ├── background/
 │   ├── service-worker.js
-│   ├── queue-engine.js
-│   └── tab-controller.js
+│   ├── message-router.js
+│   ├── storage-repo.js
+│   ├── provider-orchestrator.js
+│   └── queue-engine.js
 ├── sidepanel/
 │   ├── panel.html
 │   ├── panel.css
 │   ├── panel.js
-│   └── store.js
+│   ├── store.js
+│   ├── actions.js
+│   └── render.js
 ├── content/
 │   └── collector.js
 ├── zotero/
@@ -92,8 +96,7 @@ zotero-archivist/
 │   └── provider-connector-bridge.js
 ├── shared/
 │   ├── protocol.js
-│   ├── schema.js
-│   └── urls.js
+│   └── state.js
 └── docs/
     └── integration-notes.md
 ```

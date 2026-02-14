@@ -1,8 +1,6 @@
 import {
-  DEFAULT_SELECTOR_RULES,
   ERROR_CODES,
   MESSAGE_TYPES,
-  STORAGE_KEYS,
   createError,
   createSuccess,
   isHttpUrl,
@@ -10,29 +8,62 @@ import {
   toOriginPattern
 } from "../shared/protocol.js";
 import {
-  normalizeProviderDiagnostics,
-  normalizeProviderSettings
-} from "../zotero/provider-interface.js";
-import { createConnectorBridgeProvider } from "../zotero/provider-connector-bridge.js";
+  clearQueueRuntimeActive,
+  createQueueItemId,
+  isQueueItemActiveStatus,
+  normalizeCollectedLinks
+} from "../shared/state.js";
+import { routeMessage } from "./message-router.js";
+import { createProviderOrchestrator } from "./provider-orchestrator.js";
+import { createQueueEngine, QUEUE_ENGINE_ALARM_NAME } from "./queue-engine.js";
+import {
+  ensureProviderDiagnostics,
+  ensureProviderSettings,
+  ensureQueueItems,
+  ensureQueueRuntime,
+  ensureSelectorRules,
+  getCollectedLinks,
+  getProviderSettings,
+  getQueueItems,
+  getQueueRuntime,
+  getSelectorRules,
+  saveCollectedLinks,
+  saveProviderDiagnostics,
+  saveProviderSettings,
+  saveQueueItems,
+  saveQueueRuntime,
+  saveSelectorRules
+} from "./storage-repo.js";
 
-const QUEUE_ITEM_STATUSES = new Set([
-  "pending",
-  "opening_tab",
-  "saving_snapshot",
-  "archived",
-  "failed",
-  "cancelled"
-]);
+const providerOrchestrator = createProviderOrchestrator({
+  getProviderSettings,
+  saveProviderDiagnostics
+});
 
-const QUEUE_RUNTIME_STATUSES = new Set(["idle", "running", "paused"]);
-const QUEUE_ACTIVE_ITEM_STATUSES = new Set(["opening_tab", "saving_snapshot"]);
-const QUEUE_ALARM_NAME = "queue-engine-watchdog";
-const QUEUE_ALARM_DELAY_MINUTES = 1;
-const QUEUE_TAB_LOAD_TIMEOUT_MESSAGE = "Queue tab did not finish loading before timeout.";
-const QUEUE_TAB_CLOSED_MESSAGE = "Queue tab was closed before loading completed.";
-const CONNECTOR_BRIDGE_DISABLED_MESSAGE = "Connector bridge is disabled.";
+const queueEngine = createQueueEngine({
+  getQueueRuntime,
+  saveQueueRuntime,
+  getQueueItems,
+  saveQueueItems,
+  saveQueueItemWithProvider: providerOrchestrator.saveQueueItemWithProvider
+});
 
-let queueEngineRun = Promise.resolve();
+const messageHandlers = {
+  [MESSAGE_TYPES.GET_PANEL_STATE]: async () => createSuccess(await getPanelState()),
+  [MESSAGE_TYPES.COLLECT_LINKS]: async () => collectLinksFromActiveTab(),
+  [MESSAGE_TYPES.SET_COLLECTED_LINKS]: async (message) => setCollectedLinks(message.payload?.links),
+  [MESSAGE_TYPES.AUTHOR_QUEUE_FROM_SELECTION]: async (message) =>
+    authorQueueFromSelection(message.payload?.links),
+  [MESSAGE_TYPES.CLEAR_QUEUE]: async () => clearQueue(),
+  [MESSAGE_TYPES.START_QUEUE]: async () => startQueue(),
+  [MESSAGE_TYPES.PAUSE_QUEUE]: async () => pauseQueue(),
+  [MESSAGE_TYPES.RESUME_QUEUE]: async () => resumeQueue(),
+  [MESSAGE_TYPES.STOP_QUEUE]: async () => stopQueue(),
+  [MESSAGE_TYPES.RETRY_FAILED_QUEUE]: async () => retryFailedQueue(),
+  [MESSAGE_TYPES.SET_PROVIDER_SETTINGS]: async (message) =>
+    setProviderSettings(message.payload?.settings),
+  [MESSAGE_TYPES.SET_SELECTOR_RULES]: async (message) => setSelectorRules(message.payload?.rules)
+};
 
 chrome.runtime.onInstalled.addListener(() => {
   void initializeExtensionState();
@@ -42,8 +73,8 @@ chrome.runtime.onStartup.addListener(() => {
   void initializeExtensionState();
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  handleMessage(message, sender)
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  handleMessage(message)
     .then((result) => sendResponse(result))
     .catch((error) => {
       console.error("[zotero-archivist] Unhandled runtime error", error);
@@ -54,19 +85,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm?.name !== QUEUE_ALARM_NAME) {
+  if (alarm?.name !== QUEUE_ENGINE_ALARM_NAME) {
     return;
   }
 
-  void handleQueueAlarm();
+  void queueEngine.handleQueueAlarm();
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  void handleQueueTabUpdated(tabId, changeInfo);
+  void queueEngine.handleQueueTabUpdated(tabId, changeInfo);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  void handleQueueTabRemoved(tabId);
+  void queueEngine.handleQueueTabRemoved(tabId);
 });
 
 async function initializeExtensionState() {
@@ -78,42 +109,12 @@ async function initializeExtensionState() {
     ensureProviderDiagnostics()
   ]);
   await configureSidePanelBehavior();
-  await recoverQueueEngineState();
+  await providerOrchestrator.refreshProviderDiagnostics();
+  await queueEngine.recoverQueueEngineState();
 }
 
-async function handleMessage(message, _sender) {
-  if (!message || typeof message.type !== "string") {
-    return createError(ERROR_CODES.BAD_REQUEST, "Invalid runtime message.");
-  }
-
-  switch (message.type) {
-    case MESSAGE_TYPES.GET_PANEL_STATE:
-      return createSuccess(await getPanelState());
-    case MESSAGE_TYPES.COLLECT_LINKS:
-      return collectLinksFromActiveTab();
-    case MESSAGE_TYPES.SET_COLLECTED_LINKS:
-      return setCollectedLinks(message.payload?.links);
-    case MESSAGE_TYPES.AUTHOR_QUEUE_FROM_SELECTION:
-      return authorQueueFromSelection(message.payload?.links);
-    case MESSAGE_TYPES.CLEAR_QUEUE:
-      return clearQueue();
-    case MESSAGE_TYPES.START_QUEUE:
-      return startQueue();
-    case MESSAGE_TYPES.PAUSE_QUEUE:
-      return pauseQueue();
-    case MESSAGE_TYPES.RESUME_QUEUE:
-      return resumeQueue();
-    case MESSAGE_TYPES.STOP_QUEUE:
-      return stopQueue();
-    case MESSAGE_TYPES.RETRY_FAILED_QUEUE:
-      return retryFailedQueue();
-    case MESSAGE_TYPES.SET_PROVIDER_SETTINGS:
-      return setProviderSettings(message.payload?.settings);
-    case MESSAGE_TYPES.SET_SELECTOR_RULES:
-      return setSelectorRules(message.payload?.rules);
-    default:
-      return createError(ERROR_CODES.BAD_REQUEST, `Unsupported message type: ${message.type}`);
-  }
+async function handleMessage(message) {
+  return routeMessage(message, messageHandlers);
 }
 
 async function configureSidePanelBehavior() {
@@ -128,18 +129,11 @@ async function configureSidePanelBehavior() {
 
 async function getPanelState() {
   const selectorRules = await getSelectorRules();
+  const collectedLinks = await getCollectedLinks();
   const queueItems = await getQueueItems();
   const queueRuntime = await getQueueRuntime();
   const providerSettings = await getProviderSettings();
-  const providerDiagnostics = await refreshProviderDiagnostics("panel-state");
-  const stored = await chrome.storage.local.get(STORAGE_KEYS.COLLECTED_LINKS);
-  const collectedLinks = normalizeCollectedLinks(stored[STORAGE_KEYS.COLLECTED_LINKS]);
-
-  if (!Array.isArray(stored[STORAGE_KEYS.COLLECTED_LINKS])) {
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.COLLECTED_LINKS]: collectedLinks
-    });
-  }
+  const providerDiagnostics = await providerOrchestrator.refreshProviderDiagnostics();
 
   return {
     selectorRules,
@@ -210,11 +204,8 @@ async function collectLinksFromActiveTab() {
     });
   }
 
-  const links = normalizeCollectedLinks(collectorResponse.links);
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.COLLECTED_LINKS]: links
-  });
-  const providerDiagnostics = await refreshProviderDiagnostics("collect-links");
+  const links = await saveCollectedLinks(collectorResponse.links);
+  const providerDiagnostics = await providerOrchestrator.refreshProviderDiagnostics();
 
   return createSuccess({
     links,
@@ -224,11 +215,7 @@ async function collectLinksFromActiveTab() {
 }
 
 async function setCollectedLinks(rawLinks) {
-  const links = normalizeCollectedLinks(rawLinks);
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.COLLECTED_LINKS]: links
-  });
-
+  const links = await saveCollectedLinks(rawLinks);
   return createSuccess({
     links,
     collectedCount: links.length,
@@ -286,7 +273,7 @@ async function clearQueue() {
   }
 
   if (Number.isInteger(queueRuntime.activeTabId)) {
-    await closeTabIfPresent(queueRuntime.activeTabId);
+    await queueEngine.closeTabIfPresent(queueRuntime.activeTabId);
   }
 
   await saveQueueItems([]);
@@ -329,7 +316,7 @@ async function startQueue() {
     updatedAt: Date.now()
   };
   await saveQueueRuntime(nextRuntime);
-  runQueueEngineSoon("start");
+  queueEngine.runQueueEngineSoon("start");
 
   return createSuccess({
     queueRuntime: nextRuntime,
@@ -350,7 +337,7 @@ async function pauseQueue() {
     updatedAt: Date.now()
   };
   await saveQueueRuntime(nextRuntime);
-  await clearQueueAlarm();
+  await queueEngine.clearQueueAlarm();
 
   return createSuccess({
     queueRuntime: nextRuntime,
@@ -376,7 +363,7 @@ async function resumeQueue() {
     updatedAt: Date.now()
   };
   await saveQueueRuntime(nextRuntime);
-  runQueueEngineSoon("resume");
+  queueEngine.runQueueEngineSoon("resume");
 
   return createSuccess({
     queueRuntime: nextRuntime,
@@ -410,9 +397,9 @@ async function stopQueue() {
     updatedAt: Date.now()
   };
   await saveQueueRuntime(nextRuntime);
-  await clearQueueAlarm();
+  await queueEngine.clearQueueAlarm();
   if (activeTabId !== null) {
-    await closeTabIfPresent(activeTabId);
+    await queueEngine.closeTabIfPresent(activeTabId);
   }
 
   return createSuccess({
@@ -461,528 +448,13 @@ async function setProviderSettings(rawSettings) {
     return createError(ERROR_CODES.INVALID_PROVIDER_SETTINGS, "Invalid provider settings payload.");
   }
 
-  const providerSettings = normalizeProviderSettings(rawSettings);
-  await saveProviderSettings(providerSettings);
-  const providerDiagnostics = await refreshProviderDiagnostics("settings-updated");
+  const providerSettings = await saveProviderSettings(rawSettings);
+  const providerDiagnostics = await providerOrchestrator.refreshProviderDiagnostics();
 
   return createSuccess({
     providerSettings,
     providerDiagnostics
   });
-}
-
-function runQueueEngineSoon(trigger) {
-  queueEngineRun = queueEngineRun
-    .catch(() => undefined)
-    .then(() => runQueueEngine(trigger))
-    .catch((error) => {
-      console.error("[zotero-archivist] Queue engine run failed.", { trigger, error });
-    });
-}
-
-async function runQueueEngine(_trigger) {
-  let queueRuntime = await getQueueRuntime();
-  if (queueRuntime.status !== "running") {
-    await clearQueueAlarm();
-    return;
-  }
-
-  let queueItems = await getQueueItems();
-
-  if (typeof queueRuntime.activeQueueItemId === "string") {
-    const activeIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
-    if (activeIndex < 0) {
-      queueRuntime = {
-        ...clearQueueRuntimeActive(queueRuntime),
-        updatedAt: Date.now()
-      };
-      await saveQueueRuntime(queueRuntime);
-      await clearQueueAlarm();
-      return;
-    }
-
-    if (!Number.isInteger(queueRuntime.activeTabId)) {
-      queueItems = [...queueItems];
-      queueItems[activeIndex] = markQueueItemFailed(
-        queueItems[activeIndex],
-        "Queue runtime lost active tab context."
-      );
-      await saveQueueItems(queueItems);
-      queueRuntime = {
-        ...clearQueueRuntimeActive(queueRuntime),
-        updatedAt: Date.now()
-      };
-      await saveQueueRuntime(queueRuntime);
-      await clearQueueAlarm();
-      runQueueEngineSoon("missing-active-tab-id");
-      return;
-    }
-
-    const activeTabId = queueRuntime.activeTabId;
-    const activeTabState = await getQueueTabState(activeTabId);
-    if (activeTabState === "loading") {
-      await scheduleQueueAlarm();
-      return;
-    }
-
-    if (activeTabState === "missing") {
-      queueItems = [...queueItems];
-      queueItems[activeIndex] = markQueueItemFailed(queueItems[activeIndex], QUEUE_TAB_CLOSED_MESSAGE);
-      await saveQueueItems(queueItems);
-      queueRuntime = {
-        ...clearQueueRuntimeActive(queueRuntime),
-        updatedAt: Date.now()
-      };
-      await saveQueueRuntime(queueRuntime);
-      await clearQueueAlarm();
-      runQueueEngineSoon("active-tab-missing");
-      return;
-    }
-
-    queueItems = [...queueItems];
-    const itemForSave = {
-      ...queueItems[activeIndex],
-      status: "saving_snapshot",
-      updatedAt: Date.now()
-    };
-    queueItems[activeIndex] = itemForSave;
-    await saveQueueItems(queueItems);
-
-    const saveResult = await saveQueueItemWithProvider({
-      queueItem: itemForSave,
-      tabId: activeTabId
-    });
-
-    queueItems = await getQueueItems();
-    const refreshedActiveIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
-    if (refreshedActiveIndex < 0) {
-      queueRuntime = {
-        ...clearQueueRuntimeActive(await getQueueRuntime()),
-        updatedAt: Date.now()
-      };
-      await saveQueueRuntime(queueRuntime);
-      await clearQueueAlarm();
-      return;
-    }
-
-    const nextQueueItems = [...queueItems];
-    if (saveResult.ok) {
-      nextQueueItems[refreshedActiveIndex] = {
-        ...nextQueueItems[refreshedActiveIndex],
-        status: "archived",
-        updatedAt: Date.now(),
-        lastError: undefined
-      };
-      await saveQueueItems(nextQueueItems);
-      await closeTabIfPresent(activeTabId);
-
-      queueRuntime = {
-        ...clearQueueRuntimeActive(await getQueueRuntime()),
-        updatedAt: Date.now()
-      };
-      await saveQueueRuntime(queueRuntime);
-      await clearQueueAlarm();
-      runQueueEngineSoon("save-success");
-      return;
-    }
-
-    nextQueueItems[refreshedActiveIndex] = {
-      ...markQueueItemFailed(
-        nextQueueItems[refreshedActiveIndex],
-        typeof saveResult.error === "string" && saveResult.error.length > 0
-          ? saveResult.error
-          : "Snapshot save failed."
-      )
-    };
-    await saveQueueItems(nextQueueItems);
-    await closeTabIfPresent(activeTabId);
-
-    queueRuntime = {
-      ...clearQueueRuntimeActive(await getQueueRuntime()),
-      updatedAt: Date.now()
-    };
-    await saveQueueRuntime(queueRuntime);
-    await clearQueueAlarm();
-    runQueueEngineSoon("save-failed");
-    return;
-  }
-
-  queueRuntime = await getQueueRuntime();
-  if (queueRuntime.status !== "running") {
-    await clearQueueAlarm();
-    return;
-  }
-
-  queueItems = await getQueueItems();
-  const nextItemIndex = queueItems.findIndex((item) => item.status === "pending");
-  if (nextItemIndex < 0) {
-    const nextRuntime = {
-      ...clearQueueRuntimeActive(queueRuntime),
-      status: "idle",
-      updatedAt: Date.now()
-    };
-    await saveQueueRuntime(nextRuntime);
-    await clearQueueAlarm();
-    return;
-  }
-
-  const nextQueueItems = [...queueItems];
-  const itemToRun = {
-    ...nextQueueItems[nextItemIndex],
-    status: "opening_tab",
-    attempts: nextQueueItems[nextItemIndex].attempts + 1,
-    updatedAt: Date.now()
-  };
-  nextQueueItems[nextItemIndex] = itemToRun;
-  await saveQueueItems(nextQueueItems);
-
-  let openedTabId;
-  try {
-    const openedTab = await chrome.tabs.create({
-      url: itemToRun.url,
-      active: false
-    });
-    openedTabId = openedTab?.id;
-  } catch (error) {
-    nextQueueItems[nextItemIndex] = markQueueItemFailed(
-      itemToRun,
-      `Failed to open queue tab: ${String(error)}`
-    );
-    await saveQueueItems(nextQueueItems);
-    runQueueEngineSoon("tab-create-error");
-    return;
-  }
-
-  if (!Number.isInteger(openedTabId)) {
-    nextQueueItems[nextItemIndex] = markQueueItemFailed(itemToRun, "Queue tab did not provide a tab id.");
-    await saveQueueItems(nextQueueItems);
-    runQueueEngineSoon("missing-tab-id");
-    return;
-  }
-
-  const nextRuntime = {
-    ...queueRuntime,
-    activeQueueItemId: itemToRun.id,
-    activeTabId: openedTabId,
-    updatedAt: Date.now()
-  };
-  await saveQueueRuntime(nextRuntime);
-  await scheduleQueueAlarm();
-}
-
-async function handleQueueAlarm() {
-  const queueRuntime = await getQueueRuntime();
-  if (queueRuntime.status !== "running") {
-    return;
-  }
-
-  if (
-    typeof queueRuntime.activeQueueItemId === "string" &&
-    Number.isInteger(queueRuntime.activeTabId)
-  ) {
-    const activeTabState = await getQueueTabState(queueRuntime.activeTabId);
-    if (activeTabState === "loading" || activeTabState === "missing") {
-      const queueItems = await getQueueItems();
-      const activeIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
-      if (activeIndex >= 0 && isQueueItemActiveStatus(queueItems[activeIndex].status)) {
-        const nextQueueItems = [...queueItems];
-        nextQueueItems[activeIndex] = markQueueItemFailed(
-          queueItems[activeIndex],
-          activeTabState === "loading" ? QUEUE_TAB_LOAD_TIMEOUT_MESSAGE : QUEUE_TAB_CLOSED_MESSAGE
-        );
-        await saveQueueItems(nextQueueItems);
-      }
-
-      if (activeTabState === "loading") {
-        await closeTabIfPresent(queueRuntime.activeTabId);
-      }
-
-      const nextRuntime = {
-        ...clearQueueRuntimeActive(queueRuntime),
-        updatedAt: Date.now()
-      };
-      await saveQueueRuntime(nextRuntime);
-    }
-  }
-
-  runQueueEngineSoon("alarm");
-}
-
-async function handleQueueTabUpdated(tabId, changeInfo) {
-  if (changeInfo.status !== "complete") {
-    return;
-  }
-
-  const queueRuntime = await getQueueRuntime();
-  if (queueRuntime.status !== "running") {
-    return;
-  }
-
-  if (!Number.isInteger(queueRuntime.activeTabId) || queueRuntime.activeTabId !== tabId) {
-    return;
-  }
-
-  runQueueEngineSoon("tab-updated");
-}
-
-async function handleQueueTabRemoved(tabId) {
-  const queueRuntime = await getQueueRuntime();
-  if (!Number.isInteger(queueRuntime.activeTabId) || queueRuntime.activeTabId !== tabId) {
-    return;
-  }
-
-  const queueItems = await getQueueItems();
-  const activeIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
-  if (activeIndex >= 0 && isQueueItemActiveStatus(queueItems[activeIndex].status)) {
-    const nextQueueItems = [...queueItems];
-    nextQueueItems[activeIndex] = markQueueItemFailed(queueItems[activeIndex], QUEUE_TAB_CLOSED_MESSAGE);
-    await saveQueueItems(nextQueueItems);
-  }
-
-  const nextRuntime = {
-    ...clearQueueRuntimeActive(queueRuntime),
-    updatedAt: Date.now()
-  };
-  await saveQueueRuntime(nextRuntime);
-
-  if (queueRuntime.status === "running") {
-    runQueueEngineSoon("tab-removed");
-  }
-}
-
-async function recoverQueueEngineState() {
-  const queueRuntime = await getQueueRuntime();
-  if (queueRuntime.status !== "running") {
-    return;
-  }
-
-  runQueueEngineSoon("recover");
-}
-
-async function scheduleQueueAlarm() {
-  try {
-    await chrome.alarms.create(QUEUE_ALARM_NAME, {
-      delayInMinutes: QUEUE_ALARM_DELAY_MINUTES
-    });
-  } catch (error) {
-    console.error("[zotero-archivist] Failed to schedule queue alarm.", error);
-  }
-}
-
-async function clearQueueAlarm() {
-  try {
-    await chrome.alarms.clear(QUEUE_ALARM_NAME);
-  } catch (error) {
-    console.error("[zotero-archivist] Failed to clear queue alarm.", error);
-  }
-}
-
-async function getQueueTabState(tabId) {
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (!tab) {
-      return "missing";
-    }
-
-    return tab.status === "complete" ? "complete" : "loading";
-  } catch (_error) {
-    return "missing";
-  }
-}
-
-async function closeTabIfPresent(tabId) {
-  if (!Number.isInteger(tabId)) {
-    return;
-  }
-
-  try {
-    await chrome.tabs.remove(tabId);
-  } catch (_error) {
-    // Tab may already be closed.
-  }
-}
-
-async function saveQueueItemWithProvider({ queueItem, tabId }) {
-  const { provider, diagnostics, unavailableReason } = await resolveSaveProvider({ tabId });
-  if (!provider || typeof provider.saveWebPageWithSnapshot !== "function") {
-    const unavailableMessage = formatConnectorBridgeUnavailableMessage(
-      diagnostics.connectorBridge,
-      unavailableReason
-    );
-    await saveProviderDiagnostics({
-      ...diagnostics,
-      lastError: unavailableMessage,
-      updatedAt: Date.now()
-    });
-    return {
-      ok: false,
-      error: unavailableMessage
-    };
-  }
-
-  let providerResult;
-  try {
-    providerResult = await provider.saveWebPageWithSnapshot({
-      tabId,
-      url: queueItem.url,
-      title: queueItem.title
-    });
-  } catch (error) {
-    const thrownMessage = `Provider ${provider.mode} threw: ${String(error)}`;
-    await saveProviderDiagnostics({
-      ...diagnostics,
-      lastError: thrownMessage,
-      updatedAt: Date.now()
-    });
-    return {
-      ok: false,
-      error: thrownMessage
-    };
-  }
-
-  if (providerResult?.ok === true) {
-    await saveProviderDiagnostics({
-      ...diagnostics,
-      updatedAt: Date.now()
-    });
-    return {
-      ok: true
-    };
-  }
-
-  const providerError =
-    typeof providerResult?.error === "string" && providerResult.error.length > 0
-      ? providerResult.error
-      : `Provider ${provider.mode} failed to save the page.`;
-  await saveProviderDiagnostics({
-    ...diagnostics,
-    lastError: providerError,
-    updatedAt: Date.now()
-  });
-  return {
-    ok: false,
-    error: providerError
-  };
-}
-
-async function resolveSaveProvider({ tabId = null } = {}) {
-  const providerSettings = await getProviderSettings();
-  let activeProvider = null;
-  let connectorHealth = null;
-  let connectorHealthMessage = null;
-
-  if (providerSettings.connectorBridgeEnabled) {
-    const connectorBridgeProvider = createConnectorBridgeProvider();
-    try {
-      connectorHealth = await connectorBridgeProvider.checkHealth({ tabId });
-    } catch (error) {
-      connectorHealth = {
-        ok: false,
-        message: `Connector bridge health check failed: ${String(error)}`,
-        connectorAvailable: null,
-        zoteroOnline: null
-      };
-    }
-
-    connectorHealthMessage = normalizeConnectorHealthMessage(
-      connectorHealth?.message,
-      "Connector bridge health check returned no status message."
-    );
-
-    if (connectorHealth.ok === true) {
-      activeProvider = connectorBridgeProvider;
-    }
-  }
-
-  const diagnostics = {
-    activeMode: activeProvider?.mode ?? "connector_bridge",
-    connectorBridge: {
-      enabled: providerSettings.connectorBridgeEnabled,
-      healthy: providerSettings.connectorBridgeEnabled && connectorHealth?.ok === true,
-      connectorAvailable:
-        connectorHealth?.connectorAvailable === true
-          ? true
-          : connectorHealth?.connectorAvailable === false
-            ? false
-            : null,
-      zoteroOnline:
-        connectorHealth?.zoteroOnline === true
-          ? true
-          : connectorHealth?.zoteroOnline === false
-            ? false
-            : null
-    },
-    lastError: null,
-    updatedAt: Date.now()
-  };
-
-  await saveProviderDiagnostics(diagnostics);
-
-  return {
-    provider: activeProvider,
-    diagnostics,
-    unavailableReason: connectorHealthMessage
-  };
-}
-
-async function refreshProviderDiagnostics(_reason) {
-  const { diagnostics } = await resolveSaveProvider();
-  return diagnostics;
-}
-
-function normalizeConnectorHealthMessage(message, fallback) {
-  if (typeof message === "string" && message.trim().length > 0) {
-    return message.trim();
-  }
-
-  return fallback;
-}
-
-function formatConnectorBridgeUnavailableMessage(connectorBridge, reason) {
-  if (!connectorBridge || connectorBridge.enabled !== true) {
-    return CONNECTOR_BRIDGE_DISABLED_MESSAGE;
-  }
-
-  const normalizedReason = normalizeConnectorHealthMessage(reason, "");
-  if (normalizedReason.length > 0) {
-    return `Connector bridge is unavailable. ${normalizedReason}`;
-  }
-
-  if (connectorBridge.connectorAvailable === false) {
-    return "Connector bridge is unavailable. Zotero Connector extension is unavailable.";
-  }
-
-  if (connectorBridge.zoteroOnline === false) {
-    return "Connector bridge is unavailable. Zotero app appears to be offline.";
-  }
-
-  return "Connector bridge is unavailable.";
-}
-
-async function getSelectorRules() {
-  const stored = await chrome.storage.local.get(STORAGE_KEYS.SELECTOR_RULES);
-  const rawRules = stored[STORAGE_KEYS.SELECTOR_RULES];
-  const sanitizedRules = sanitizeSelectorRules(rawRules);
-  const defaults = DEFAULT_SELECTOR_RULES.map((rule) => ({ ...rule }));
-
-  if (sanitizedRules.length === 0) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.SELECTOR_RULES]: defaults });
-    return defaults;
-  }
-
-  if (isLegacyAnchorOnlyDefault(sanitizedRules)) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.SELECTOR_RULES]: defaults });
-    return defaults;
-  }
-
-  const needsWriteBack =
-    !Array.isArray(rawRules) || JSON.stringify(rawRules) !== JSON.stringify(sanitizedRules);
-
-  if (needsWriteBack) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.SELECTOR_RULES]: sanitizedRules });
-  }
-
-  return sanitizedRules;
 }
 
 async function setSelectorRules(rawRules) {
@@ -1005,118 +477,10 @@ async function setSelectorRules(rawRules) {
     );
   }
 
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.SELECTOR_RULES]: sanitizedRules
-  });
+  await saveSelectorRules(sanitizedRules);
 
   return createSuccess({
     selectorRules: sanitizedRules
-  });
-}
-
-async function ensureSelectorRules() {
-  await getSelectorRules();
-}
-
-async function ensureQueueItems() {
-  await getQueueItems();
-}
-
-async function ensureQueueRuntime() {
-  await getQueueRuntime();
-}
-
-async function ensureProviderSettings() {
-  await getProviderSettings();
-}
-
-async function ensureProviderDiagnostics() {
-  await getProviderDiagnostics();
-  await refreshProviderDiagnostics("startup");
-}
-
-async function getProviderSettings() {
-  const stored = await chrome.storage.local.get(STORAGE_KEYS.PROVIDER_SETTINGS);
-  const rawProviderSettings = stored[STORAGE_KEYS.PROVIDER_SETTINGS];
-  const providerSettings = normalizeProviderSettings(rawProviderSettings);
-
-  const needsWriteBack =
-    !rawProviderSettings || JSON.stringify(rawProviderSettings) !== JSON.stringify(providerSettings);
-  if (needsWriteBack) {
-    await saveProviderSettings(providerSettings);
-  }
-
-  return providerSettings;
-}
-
-async function saveProviderSettings(providerSettings) {
-  const normalized = normalizeProviderSettings(providerSettings);
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.PROVIDER_SETTINGS]: normalized
-  });
-}
-
-async function getProviderDiagnostics() {
-  const stored = await chrome.storage.local.get(STORAGE_KEYS.PROVIDER_DIAGNOSTICS);
-  const rawProviderDiagnostics = stored[STORAGE_KEYS.PROVIDER_DIAGNOSTICS];
-  const providerDiagnostics = normalizeProviderDiagnostics(rawProviderDiagnostics);
-
-  const needsWriteBack =
-    !rawProviderDiagnostics ||
-    JSON.stringify(rawProviderDiagnostics) !== JSON.stringify(providerDiagnostics);
-  if (needsWriteBack) {
-    await saveProviderDiagnostics(providerDiagnostics);
-  }
-
-  return providerDiagnostics;
-}
-
-async function saveProviderDiagnostics(providerDiagnostics) {
-  const normalized = normalizeProviderDiagnostics(providerDiagnostics);
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.PROVIDER_DIAGNOSTICS]: normalized
-  });
-}
-
-async function getQueueItems() {
-  const stored = await chrome.storage.local.get(STORAGE_KEYS.QUEUE_ITEMS);
-  const rawQueueItems = stored[STORAGE_KEYS.QUEUE_ITEMS];
-  const queueItems = normalizeQueueItems(rawQueueItems);
-
-  const needsWriteBack =
-    !Array.isArray(rawQueueItems) || JSON.stringify(rawQueueItems) !== JSON.stringify(queueItems);
-
-  if (needsWriteBack) {
-    await saveQueueItems(queueItems);
-  }
-
-  return queueItems;
-}
-
-async function saveQueueItems(queueItems) {
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.QUEUE_ITEMS]: queueItems
-  });
-}
-
-async function getQueueRuntime() {
-  const stored = await chrome.storage.local.get(STORAGE_KEYS.QUEUE_RUNTIME);
-  const rawQueueRuntime = stored[STORAGE_KEYS.QUEUE_RUNTIME];
-  const queueRuntime = normalizeQueueRuntime(rawQueueRuntime);
-
-  const needsWriteBack =
-    !rawQueueRuntime || JSON.stringify(rawQueueRuntime) !== JSON.stringify(queueRuntime);
-
-  if (needsWriteBack) {
-    await saveQueueRuntime(queueRuntime);
-  }
-
-  return queueRuntime;
-}
-
-async function saveQueueRuntime(queueRuntime) {
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.QUEUE_RUNTIME]: queueRuntime
   });
 }
 
@@ -1127,218 +491,4 @@ async function getActiveTab() {
   });
 
   return tabs[0] ?? null;
-}
-
-function normalizeCollectedLinks(input) {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-
-  const dedupe = new Set();
-  const normalized = [];
-  for (const candidate of input) {
-    if (!candidate || typeof candidate !== "object" || typeof candidate.url !== "string") {
-      continue;
-    }
-
-    if (!isHttpUrl(candidate.url)) {
-      continue;
-    }
-
-    const url = new URL(candidate.url).toString();
-    const dedupeKey =
-      typeof candidate.dedupeKey === "string" && candidate.dedupeKey.length > 0
-        ? candidate.dedupeKey
-        : url.toLowerCase();
-
-    if (dedupe.has(dedupeKey)) {
-      continue;
-    }
-
-    dedupe.add(dedupeKey);
-    normalized.push({
-      id:
-        typeof candidate.id === "string" && candidate.id.length > 0
-          ? candidate.id
-          : `link-${normalized.length + 1}`,
-      url,
-      title:
-        typeof candidate.title === "string" && candidate.title.trim().length > 0
-          ? candidate.title.trim()
-          : url,
-      sourceSelectorId:
-        typeof candidate.sourceSelectorId === "string" && candidate.sourceSelectorId.length > 0
-          ? candidate.sourceSelectorId
-          : "unknown",
-      selected: candidate.selected !== false,
-      dedupeKey
-    });
-  }
-
-  return normalized;
-}
-
-function normalizeQueueItems(input) {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-
-  const now = Date.now();
-  const dedupe = new Set();
-  const normalized = [];
-  for (const candidate of input) {
-    if (!candidate || typeof candidate !== "object" || typeof candidate.url !== "string") {
-      continue;
-    }
-
-    if (!isHttpUrl(candidate.url)) {
-      continue;
-    }
-
-    const url = new URL(candidate.url).toString();
-    const dedupeKey = url.toLowerCase();
-    if (dedupe.has(dedupeKey)) {
-      continue;
-    }
-    dedupe.add(dedupeKey);
-
-    const createdAt =
-      Number.isFinite(candidate.createdAt) && candidate.createdAt > 0
-        ? Math.trunc(candidate.createdAt)
-        : now;
-    const updatedAt =
-      Number.isFinite(candidate.updatedAt) && candidate.updatedAt > 0
-        ? Math.max(Math.trunc(candidate.updatedAt), createdAt)
-        : createdAt;
-
-    const queueItem = {
-      id:
-        typeof candidate.id === "string" && candidate.id.length > 0
-          ? candidate.id
-          : createQueueItemId(now, normalized.length + 1),
-      url,
-      title:
-        typeof candidate.title === "string" && candidate.title.trim().length > 0
-          ? candidate.title.trim()
-          : url,
-      status:
-        typeof candidate.status === "string" && QUEUE_ITEM_STATUSES.has(candidate.status)
-          ? candidate.status
-          : "pending",
-      attempts:
-        Number.isFinite(candidate.attempts) && candidate.attempts >= 0
-          ? Math.trunc(candidate.attempts)
-          : 0,
-      createdAt,
-      updatedAt
-    };
-
-    if (typeof candidate.lastError === "string" && candidate.lastError.trim().length > 0) {
-      queueItem.lastError = candidate.lastError.trim();
-    }
-
-    normalized.push(queueItem);
-  }
-
-  return normalized;
-}
-
-function normalizeQueueRuntime(input) {
-  const now = Date.now();
-  if (!input || typeof input !== "object") {
-    return {
-      status: "idle",
-      activeQueueItemId: null,
-      activeTabId: null,
-      updatedAt: now
-    };
-  }
-
-  const status =
-    typeof input.status === "string" && QUEUE_RUNTIME_STATUSES.has(input.status)
-      ? input.status
-      : "idle";
-
-  const activeQueueItemId =
-    typeof input.activeQueueItemId === "string" && input.activeQueueItemId.length > 0
-      ? input.activeQueueItemId
-      : null;
-
-  const activeTabId = Number.isInteger(input.activeTabId) ? input.activeTabId : null;
-
-  const updatedAt =
-    Number.isFinite(input.updatedAt) && input.updatedAt > 0 ? Math.trunc(input.updatedAt) : now;
-
-  if (status === "idle") {
-    return {
-      status,
-      activeQueueItemId: null,
-      activeTabId: null,
-      updatedAt
-    };
-  }
-
-  if (activeQueueItemId === null || activeTabId === null) {
-    return {
-      status,
-      activeQueueItemId: null,
-      activeTabId: null,
-      updatedAt
-    };
-  }
-
-  return {
-    status,
-    activeQueueItemId,
-    activeTabId,
-    updatedAt
-  };
-}
-
-function markQueueItemFailed(queueItem, message) {
-  return {
-    ...queueItem,
-    status: "failed",
-    lastError: message,
-    updatedAt: Date.now()
-  };
-}
-
-function createQueueItemId(timestamp, index) {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `queue-${crypto.randomUUID()}`;
-  }
-  return `queue-${timestamp}-${index}`;
-}
-
-function clearQueueRuntimeActive(queueRuntime) {
-  return {
-    ...queueRuntime,
-    activeQueueItemId: null,
-    activeTabId: null
-  };
-}
-
-function isQueueItemActiveStatus(status) {
-  return QUEUE_ACTIVE_ITEM_STATUSES.has(status);
-}
-
-function isLegacyAnchorOnlyDefault(rules) {
-  if (!Array.isArray(rules) || rules.length !== 1) {
-    return false;
-  }
-
-  const rule = rules[0];
-  if (!rule || typeof rule !== "object") {
-    return false;
-  }
-
-  const normalizedName = typeof rule.name === "string" ? rule.name.trim().toLowerCase() : "";
-  return (
-    rule.id === "anchors" &&
-    rule.cssSelector === "a[href]" &&
-    rule.urlAttribute === "href" &&
-    rule.enabled === true &&
-    (normalizedName === "all anchor links" || normalizedName === "anchors")
-  );
 }

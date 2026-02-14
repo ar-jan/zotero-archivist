@@ -49,3 +49,17 @@ Last updated: 2026-02-14
 - Added integration section in side panel with connector-bridge toggle and live provider diagnostics.
 - Connector bridge provider now probes and executes `Connector_Browser.saveAsWebpage(..., { snapshot: true })` via the iframe/port bridge.
 - Bridge failures now fail closed and expose reason details in diagnostics.
+
+## Maintainability Refactor (2026-02-14)
+
+- Centralized shared queue/link/runtime normalization in `shared/state.js` and removed duplicated panel/background implementations.
+- Split background runtime concerns into modules:
+  - `background/storage-repo.js`
+  - `background/provider-orchestrator.js`
+  - `background/queue-engine.js`
+  - `background/message-router.js`
+- Split sidepanel support concerns into modules:
+  - `sidepanel/store.js`
+  - `sidepanel/actions.js`
+  - `sidepanel/render.js`
+- Added contract-style tests for shared normalization and routing behavior in `tests/shared-state.test.mjs`.
