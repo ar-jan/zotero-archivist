@@ -909,7 +909,7 @@ async function closeTabIfPresent(tabId) {
 }
 
 async function saveQueueItemWithProvider({ queueItem, tabId }) {
-  const { provider, diagnostics } = await resolveSaveProvider();
+  const { provider, diagnostics } = await resolveSaveProvider({ tabId });
   if (!provider || typeof provider.saveWebPageWithSnapshot !== "function") {
     const unavailableMessage = "No save provider is available.";
     await saveProviderDiagnostics({
@@ -983,7 +983,7 @@ async function saveQueueItemWithProvider({ queueItem, tabId }) {
   };
 }
 
-async function resolveSaveProvider() {
+async function resolveSaveProvider({ tabId = null } = {}) {
   const providerSettings = await getProviderSettings();
   const manualProvider = createManualProvider();
   let activeProvider = manualProvider;
@@ -993,7 +993,7 @@ async function resolveSaveProvider() {
   if (providerSettings.connectorBridgeEnabled) {
     const connectorBridgeProvider = createConnectorBridgeProvider();
     try {
-      connectorHealth = await connectorBridgeProvider.checkHealth();
+      connectorHealth = await connectorBridgeProvider.checkHealth({ tabId });
     } catch (error) {
       connectorHealth = {
         ok: false,
@@ -1004,7 +1004,10 @@ async function resolveSaveProvider() {
     if (connectorHealth.ok === true) {
       activeProvider = connectorBridgeProvider;
     } else {
-      fallbackMessage = CONNECTOR_BRIDGE_FALLBACK_MESSAGE;
+      fallbackMessage = `${CONNECTOR_BRIDGE_FALLBACK_MESSAGE} ${normalizeDetailsText(
+        connectorHealth?.details,
+        "No connector bridge details were provided."
+      )}`;
     }
   }
 

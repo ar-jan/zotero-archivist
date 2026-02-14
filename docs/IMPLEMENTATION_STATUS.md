@@ -36,11 +36,11 @@ Last updated: 2026-02-14
 - [x] Phase 1: Build link curation controls (select/deselect/filter).
 - [x] Phase 1: Implement queue authoring from selected links.
 - [x] Phase 2: Implement MV3-safe queue engine with persisted state transitions.
-- [ ] Phase 3: Implement save providers (manual first, connector bridge behind feature flag).
+- [x] Phase 3: Implement save providers (manual first, connector bridge behind feature flag).
   - [x] Manual provider baseline implemented with explicit `manual_required` confirmation workflow.
   - [x] Provider settings + diagnostics storage added (`providerSettings`, `providerDiagnostics`).
   - [x] Connector bridge feature flag + health check + automatic fallback to manual provider wired.
-  - [ ] Connector bridge snapshot save command against Zotero internal bridge is still pending.
+  - [x] Connector bridge snapshot save command wired through Zotero `chromeMessageIframe` service-worker bridge.
 - [ ] Phase 4: Add diagnostics, contract tests, and hardening.
 
 ## Phase 3 Notes (Current)
@@ -49,4 +49,5 @@ Last updated: 2026-02-14
 - Manual provider now opens/activates the queue tab, sets queue item to `manual_required`, and waits for user confirmation.
 - Side panel now includes per-item `Mark Saved` / `Mark Failed` actions to complete manual-required queue items and continue queue progression.
 - Added integration section in side panel with connector-bridge experimental toggle and live provider diagnostics.
-- Connector bridge provider is currently a guarded placeholder that reports unavailable and falls back to manual mode.
+- Connector bridge provider now probes and executes `Connector_Browser.saveAsWebpage(..., { snapshot: true })` via the iframe/port bridge.
+- Bridge failures automatically downgrade the active save attempt to manual mode and expose reason details in diagnostics.
