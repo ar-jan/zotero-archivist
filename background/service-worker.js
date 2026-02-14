@@ -12,14 +12,12 @@ import {
 
 chrome.runtime.onInstalled.addListener(() => {
   void ensureSelectorRules();
+  void configureSidePanelBehavior();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   void ensureSelectorRules();
-});
-
-chrome.action.onClicked.addListener((tab) => {
-  void openSidePanel(tab);
+  void configureSidePanelBehavior();
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -50,16 +48,13 @@ async function handleMessage(message, _sender) {
   }
 }
 
-async function openSidePanel(tab) {
-  const windowId = Number.isInteger(tab?.windowId) ? tab.windowId : undefined;
-  if (!Number.isInteger(windowId)) {
-    return;
-  }
-
+async function configureSidePanelBehavior() {
   try {
-    await chrome.sidePanel.open({ windowId });
+    await chrome.sidePanel.setPanelBehavior({
+      openPanelOnActionClick: true
+    });
   } catch (error) {
-    console.error("[zotero-archivist] Failed to open side panel.", error);
+    console.error("[zotero-archivist] Failed to configure side panel behavior.", error);
   }
 }
 

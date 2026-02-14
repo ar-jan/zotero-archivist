@@ -12,7 +12,7 @@ Last updated: 2026-02-09
   - [x] `sidepanel/panel.css`
   - [x] `content/collector.js`
   - [x] `shared/protocol.js`
-- [x] Wired toolbar action to open side panel via `chrome.sidePanel.open()`.
+- [x] Wired toolbar action to toggle side panel via `chrome.sidePanel.setPanelBehavior()`.
 - [x] Wired background runtime message routing for panel <-> background <-> content flow.
 - [x] Implemented `Collect Links` end-to-end:
   - [x] Side panel sends `COLLECT_LINKS`.
@@ -27,7 +27,7 @@ Last updated: 2026-02-09
 ## Phase 0 Definition of Done
 
 - [x] Unpacked extension loads successfully.
-- [x] Clicking toolbar action opens the side panel.
+- [x] Clicking toolbar action toggles the side panel.
 - [x] Clicking `Collect Links` shows links from the active page.
 
 ## Next Phases
