@@ -11,11 +11,19 @@ const saveRulesButton = document.getElementById("save-rules-button");
 const selectorRulesListEl = document.getElementById("selector-rules-list");
 const statusEl = document.getElementById("status");
 const resultsTitleEl = document.getElementById("results-title");
+const resultsSummaryEl = document.getElementById("results-summary");
 const resultsListEl = document.getElementById("results-list");
+const selectAllLinksButton = document.getElementById("select-all-links-button");
+const clearAllLinksButton = document.getElementById("clear-all-links-button");
+const invertLinksButton = document.getElementById("invert-links-button");
+const resultsFilterInput = document.getElementById("results-filter-input");
 const rulesSummaryEl = document.getElementById("rules-summary");
 
 let selectorRulesDirty = false;
 let selectorRuleCounter = 0;
+let collectedLinksState = [];
+let resultsFilterQuery = normalizeFilterQuery(resultsFilterInput.value);
+let persistCollectedLinksQueue = Promise.resolve();
 
 collectButton.addEventListener("click", () => {
   void collectLinks();
@@ -41,6 +49,27 @@ selectorRulesListEl.addEventListener("change", () => {
   markSelectorRulesDirty();
 });
 
+resultsListEl.addEventListener("change", (event) => {
+  void handleResultsListChange(event);
+});
+
+selectAllLinksButton.addEventListener("click", () => {
+  void setFilteredLinksSelectedState(true);
+});
+
+clearAllLinksButton.addEventListener("click", () => {
+  void setFilteredLinksSelectedState(false);
+});
+
+invertLinksButton.addEventListener("click", () => {
+  void invertFilteredLinkSelection();
+});
+
+resultsFilterInput.addEventListener("input", () => {
+  resultsFilterQuery = normalizeFilterQuery(resultsFilterInput.value);
+  renderLinks(collectedLinksState);
+});
+
 void loadPanelState();
 
 async function loadPanelState() {
@@ -56,10 +85,10 @@ async function loadPanelState() {
   }
 
   const selectorRules = normalizeSelectorRules(response.selectorRules);
-  const collectedLinks = Array.isArray(response.collectedLinks) ? response.collectedLinks : [];
+  const collectedLinks = normalizeCollectedLinks(response.collectedLinks);
 
   renderSelectorRules(selectorRules);
-  renderLinks(collectedLinks);
+  setCollectedLinksState(collectedLinks);
   setSelectorRulesDirty(false);
   setStatus("Ready.");
 }
@@ -106,8 +135,8 @@ async function collectLinks() {
       return;
     }
 
-    const links = Array.isArray(response.links) ? response.links : [];
-    renderLinks(links);
+    const links = normalizeCollectedLinks(response.links);
+    setCollectedLinksState(links);
     setStatus(`Collected ${links.length} link(s).`);
   } catch (error) {
     console.error("[zotero-archivist] Collect Links failed.", error);
@@ -443,31 +472,310 @@ async function ensureHostPermission(tabUrl) {
   return { granted, alreadyGranted: false, originPattern };
 }
 
+function setCollectedLinksState(links) {
+  collectedLinksState = normalizeCollectedLinks(links);
+  renderLinks(collectedLinksState);
+}
+
+async function handleResultsListChange(event) {
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (!event.target.classList.contains("result-selected-input")) {
+    return;
+  }
+
+  const linkId = typeof event.target.dataset.linkId === "string" ? event.target.dataset.linkId : "";
+  if (linkId.length === 0) {
+    return;
+  }
+
+  const nextSelected = event.target.checked;
+  let changed = false;
+  const nextLinks = collectedLinksState.map((link) => {
+    if (link.id !== linkId) {
+      return link;
+    }
+
+    const currentSelected = link.selected !== false;
+    if (currentSelected === nextSelected) {
+      return link;
+    }
+
+    changed = true;
+    return {
+      ...link,
+      selected: nextSelected
+    };
+  });
+
+  if (!changed) {
+    return;
+  }
+
+  setCollectedLinksState(nextLinks);
+  const persisted = await persistCollectedLinks();
+  if (persisted) {
+    setStatus(`${nextSelected ? "Selected" : "Cleared"} 1 link.`);
+  }
+}
+
+async function setFilteredLinksSelectedState(nextSelectedState) {
+  const filteredLinks = getFilteredLinks(collectedLinksState, resultsFilterQuery);
+  if (filteredLinks.length === 0) {
+    setStatus("No links match the current filter.");
+    return;
+  }
+
+  const filteredIds = new Set(filteredLinks.map((link) => link.id));
+  let changedCount = 0;
+  const nextLinks = collectedLinksState.map((link) => {
+    if (!filteredIds.has(link.id)) {
+      return link;
+    }
+
+    const currentSelected = link.selected !== false;
+    if (currentSelected === nextSelectedState) {
+      return link;
+    }
+
+    changedCount += 1;
+    return {
+      ...link,
+      selected: nextSelectedState
+    };
+  });
+
+  if (changedCount === 0) {
+    setStatus(
+      nextSelectedState
+        ? "Filtered links are already selected."
+        : "Filtered links are already cleared."
+    );
+    return;
+  }
+
+  setCollectedLinksState(nextLinks);
+  const persisted = await persistCollectedLinks();
+  if (persisted) {
+    setStatus(`${nextSelectedState ? "Selected" : "Cleared"} ${changedCount} filtered link(s).`);
+  }
+}
+
+async function invertFilteredLinkSelection() {
+  const filteredLinks = getFilteredLinks(collectedLinksState, resultsFilterQuery);
+  if (filteredLinks.length === 0) {
+    setStatus("No links match the current filter.");
+    return;
+  }
+
+  const filteredIds = new Set(filteredLinks.map((link) => link.id));
+  let changedCount = 0;
+  const nextLinks = collectedLinksState.map((link) => {
+    if (!filteredIds.has(link.id)) {
+      return link;
+    }
+
+    changedCount += 1;
+    return {
+      ...link,
+      selected: link.selected === false
+    };
+  });
+
+  setCollectedLinksState(nextLinks);
+  const persisted = await persistCollectedLinks();
+  if (persisted) {
+    setStatus(`Inverted selection for ${changedCount} filtered link(s).`);
+  }
+}
+
+async function persistCollectedLinks() {
+  const snapshot = collectedLinksState.map((link) => ({ ...link }));
+
+  persistCollectedLinksQueue = persistCollectedLinksQueue
+    .catch(() => false)
+    .then(async () => {
+      const response = await chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.SET_COLLECTED_LINKS,
+        payload: {
+          links: snapshot
+        }
+      });
+
+      if (!response || response.ok !== true) {
+        setStatus(messageFromError(response?.error) ?? "Failed to save curated links.");
+        return false;
+      }
+
+      collectedLinksState = normalizeCollectedLinks(response.links);
+      renderLinks(collectedLinksState);
+      return true;
+    })
+    .catch((error) => {
+      console.error("[zotero-archivist] Failed to persist curated links.", error);
+      setStatus("Failed to save curated links.");
+      return false;
+    });
+
+  return persistCollectedLinksQueue;
+}
+
 function renderLinks(links) {
   const safeLinks = Array.isArray(links) ? links : [];
+  const filteredLinks = getFilteredLinks(safeLinks, resultsFilterQuery);
+  const selectedCount = safeLinks.filter((link) => link.selected !== false).length;
+
+  resultsTitleEl.textContent = `Collected Links (${safeLinks.length})`;
+  updateResultsSummary({
+    selectedCount,
+    totalCount: safeLinks.length,
+    filteredCount: filteredLinks.length
+  });
+  updateResultsControlState({
+    totalCount: safeLinks.length,
+    filteredCount: filteredLinks.length
+  });
 
   resultsListEl.textContent = "";
-  resultsTitleEl.textContent = `Collected Links (${safeLinks.length})`;
+  if (safeLinks.length === 0) {
+    resultsListEl.append(createResultMessageItem("No links collected yet."));
+    return;
+  }
 
-  for (const link of safeLinks) {
+  if (filteredLinks.length === 0) {
+    resultsListEl.append(createResultMessageItem("No links match the current filter."));
+    return;
+  }
+
+  for (const link of filteredLinks) {
     const item = document.createElement("li");
     item.className = "result-item";
 
+    const row = document.createElement("div");
+    row.className = "result-row";
+
+    const selectLabel = document.createElement("label");
+    selectLabel.className = "result-select";
+    const selectInput = document.createElement("input");
+    selectInput.className = "result-selected-input";
+    selectInput.type = "checkbox";
+    selectInput.checked = link.selected !== false;
+    selectInput.dataset.linkId = link.id;
+    selectInput.setAttribute("aria-label", `Select link ${link.title}`);
+    selectLabel.append(selectInput);
+
     const anchor = document.createElement("a");
     anchor.className = "result-link";
-    anchor.href = typeof link.url === "string" ? link.url : "#";
+    anchor.href = link.url;
     anchor.target = "_blank";
     anchor.rel = "noreferrer noopener";
-    anchor.textContent =
-      typeof link.title === "string" && link.title.trim().length > 0 ? link.title : anchor.href;
+    anchor.textContent = link.title;
 
     const meta = document.createElement("div");
     meta.className = "result-meta";
-    meta.textContent = anchor.href;
+    meta.textContent = link.url;
 
-    item.append(anchor, meta);
+    row.append(selectLabel, anchor);
+    item.append(row, meta);
     resultsListEl.append(item);
   }
+}
+
+function updateResultsSummary({ selectedCount, totalCount, filteredCount }) {
+  const summaryParts = [`${selectedCount} selected`];
+  if (resultsFilterQuery.length > 0) {
+    summaryParts.push(`showing ${filteredCount} of ${totalCount}`);
+  }
+  resultsSummaryEl.textContent = summaryParts.join(" • ");
+}
+
+function updateResultsControlState({ totalCount, filteredCount }) {
+  const hasFilteredLinks = filteredCount > 0;
+
+  resultsFilterInput.disabled = false;
+  selectAllLinksButton.disabled = !hasFilteredLinks;
+  clearAllLinksButton.disabled = !hasFilteredLinks;
+  invertLinksButton.disabled = !hasFilteredLinks;
+}
+
+function createResultMessageItem(message) {
+  const item = document.createElement("li");
+  item.className = "result-item result-empty";
+  item.textContent = message;
+  return item;
+}
+
+function getFilteredLinks(links, filterQuery) {
+  if (!Array.isArray(links) || links.length === 0) {
+    return [];
+  }
+
+  if (filterQuery.length === 0) {
+    return links;
+  }
+
+  return links.filter((link) => {
+    const normalizedTitle = typeof link.title === "string" ? link.title.toLowerCase() : "";
+    const normalizedUrl = typeof link.url === "string" ? link.url.toLowerCase() : "";
+    return normalizedTitle.includes(filterQuery) || normalizedUrl.includes(filterQuery);
+  });
+}
+
+function normalizeFilterQuery(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().toLowerCase();
+}
+
+function normalizeCollectedLinks(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const normalized = [];
+  const seenIds = new Set();
+  for (const candidate of input) {
+    if (!candidate || typeof candidate !== "object" || typeof candidate.url !== "string") {
+      continue;
+    }
+
+    if (!isHttpUrl(candidate.url)) {
+      continue;
+    }
+
+    const normalizedUrl = new URL(candidate.url).toString();
+    const fallbackId = `link-${normalized.length + 1}`;
+    const candidateId = typeof candidate.id === "string" ? candidate.id.trim() : "";
+    const id = candidateId.length > 0 ? candidateId : fallbackId;
+    if (seenIds.has(id)) {
+      continue;
+    }
+    seenIds.add(id);
+
+    normalized.push({
+      id,
+      url: normalizedUrl,
+      title:
+        typeof candidate.title === "string" && candidate.title.trim().length > 0
+          ? candidate.title.trim()
+          : normalizedUrl,
+      sourceSelectorId:
+        typeof candidate.sourceSelectorId === "string" && candidate.sourceSelectorId.length > 0
+          ? candidate.sourceSelectorId
+          : "unknown",
+      selected: candidate.selected !== false,
+      dedupeKey:
+        typeof candidate.dedupeKey === "string" && candidate.dedupeKey.length > 0
+          ? candidate.dedupeKey
+          : normalizedUrl.toLowerCase()
+    });
+  }
+
+  return normalized;
 }
 
 function setStatus(message) {

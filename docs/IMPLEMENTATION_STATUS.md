@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-02-09
+Last updated: 2026-02-14
 
 ## Phase 0 Vertical Slice
 
@@ -33,7 +33,7 @@ Last updated: 2026-02-09
 ## Next Phases
 
 - [x] Phase 1: Build selector management UI.
-- [ ] Phase 1: Build link curation controls (select/deselect/filter).
+- [x] Phase 1: Build link curation controls (select/deselect/filter).
 - [ ] Phase 1: Implement queue authoring from selected links.
 - [ ] Phase 2: Implement MV3-safe queue engine with persisted state transitions.
 - [ ] Phase 3: Implement save providers (manual first, connector bridge behind feature flag).

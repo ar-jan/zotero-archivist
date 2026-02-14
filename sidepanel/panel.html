@@ -28,7 +28,26 @@
       </section>
 
       <section class="results" aria-live="polite">
-        <h2 id="results-title">Collected Links (0)</h2>
+        <div class="results-header">
+          <h2 id="results-title">Collected Links (0)</h2>
+          <p id="results-summary" class="results-summary"></p>
+        </div>
+        <div class="results-controls">
+          <div class="results-selection-actions">
+            <button id="select-all-links-button" type="button">Select All</button>
+            <button id="clear-all-links-button" type="button">Clear All</button>
+            <button id="invert-links-button" type="button">Invert</button>
+          </div>
+          <label class="results-filter" for="results-filter-input">
+            <span>Filter</span>
+            <input
+              id="results-filter-input"
+              type="search"
+              placeholder="Filter by title or URL"
+              autocomplete="off"
+            >
+          </label>
+        </div>
         <ul id="results-list" class="results-list"></ul>
       </section>
     </main>

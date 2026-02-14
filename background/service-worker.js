@@ -41,6 +41,8 @@ async function handleMessage(message, _sender) {
       return createSuccess(await getPanelState());
     case MESSAGE_TYPES.COLLECT_LINKS:
       return collectLinksFromActiveTab();
+    case MESSAGE_TYPES.SET_COLLECTED_LINKS:
+      return setCollectedLinks(message.payload?.links);
     case MESSAGE_TYPES.SET_SELECTOR_RULES:
       return setSelectorRules(message.payload?.rules);
     default:
@@ -142,6 +144,19 @@ async function collectLinksFromActiveTab() {
   return createSuccess({
     links,
     collectedCount: links.length
+  });
+}
+
+async function setCollectedLinks(rawLinks) {
+  const links = normalizeCollectedLinks(rawLinks);
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.COLLECTED_LINKS]: links
+  });
+
+  return createSuccess({
+    links,
+    collectedCount: links.length,
+    selectedCount: links.filter((link) => link.selected !== false).length
   });
 }
 
