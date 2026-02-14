@@ -63,6 +63,7 @@ Last updated: 2026-02-14
   - `sidepanel/store.js`
   - `sidepanel/actions.js`
   - `sidepanel/render.js`
+  - `sidepanel/queue-controller.js`
 - Added contract-style tests for shared normalization and routing behavior in `tests/shared-state.test.mjs`.
 - Added queue-engine transition tests in `tests/queue-engine.test.mjs` covering:
   - pending -> opening_tab
@@ -81,6 +82,7 @@ Last updated: 2026-02-14
 - Added integration controls in the side panel:
   - Manual diagnostics refresh action and last-check timestamp.
   - Store-level coverage in `tests/panel-store.test.mjs`.
+- Added sidepanel queue controller tests in `tests/queue-controller.test.mjs`.
 - Removed dead provider-settings surface (`SET_PROVIDER_SETTINGS`) from runtime protocol/routes.
 
 ## Post-Refactor TODOs
@@ -121,8 +123,10 @@ Last updated: 2026-02-14
   - Scope:
     - Incrementally separate selector editing, link curation, and queue lifecycle orchestration in `sidepanel/panel.js`.
   - Why: Smaller feature-focused modules improve readability, lower merge conflict risk, and make testing easier.
+  - Progress: Queue lifecycle/authoring/clear orchestration moved to `sidepanel/queue-controller.js`; selector editing and link curation remain.
 
-- [ ] Add a stable test command entrypoint.
+- [x] Add a stable test command entrypoint.
   - Scope:
     - Add a small `package.json` script (or equivalent documented command) for running the test suite consistently.
   - Why: A single repeatable command reduces friction in CI and local verification workflows.
+  - Note: Added `npm test`/`npm run test:watch` scripts in `package.json` and documented `npm test` in `README.md`.

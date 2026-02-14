@@ -5,3 +5,7 @@ A Chromium browser extension to collect links from a web page and archive select
 ## Planning Docs
 
 - High-level architecture and implementation plan: `docs/ARCHITECTURE.md`
+
+## Test Command
+
+- Run all tests: `npm test`

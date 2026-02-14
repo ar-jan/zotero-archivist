@@ -1,0 +1,200 @@
+import { MESSAGE_TYPES } from "../shared/protocol.js";
+
+const QUEUE_LIFECYCLE_CONFIG = Object.freeze({
+  [MESSAGE_TYPES.START_QUEUE]: Object.freeze({
+    fallbackErrorMessage: "Failed to start queue.",
+    successStatusMessage: "Queue started."
+  }),
+  [MESSAGE_TYPES.PAUSE_QUEUE]: Object.freeze({
+    fallbackErrorMessage: "Failed to pause queue.",
+    successStatusMessage: "Queue paused."
+  }),
+  [MESSAGE_TYPES.RESUME_QUEUE]: Object.freeze({
+    fallbackErrorMessage: "Failed to resume queue.",
+    successStatusMessage: "Queue resumed."
+  }),
+  [MESSAGE_TYPES.STOP_QUEUE]: Object.freeze({
+    fallbackErrorMessage: "Failed to stop queue.",
+    successStatusMessage: "Queue stopped."
+  }),
+  [MESSAGE_TYPES.RETRY_FAILED_QUEUE]: Object.freeze({
+    fallbackErrorMessage: "Failed to retry queue items.",
+    successStatusMessage: "Retry queued for failed items."
+  })
+});
+
+export function createQueueController({
+  panelStore,
+  getCollectedLinks,
+  getQueueItems,
+  queueLifecycleActionImpl,
+  authorQueueFromSelectionActionImpl,
+  clearQueueActionImpl,
+  setQueueItemsState,
+  setQueueRuntimeState,
+  updateQueueActionState,
+  setStatus,
+  messageFromError,
+  logger = console
+}) {
+  async function startQueueProcessing() {
+    await runQueueLifecycleAction(MESSAGE_TYPES.START_QUEUE);
+  }
+
+  async function pauseQueueProcessing() {
+    await runQueueLifecycleAction(MESSAGE_TYPES.PAUSE_QUEUE);
+  }
+
+  async function resumeQueueProcessing() {
+    await runQueueLifecycleAction(MESSAGE_TYPES.RESUME_QUEUE);
+  }
+
+  async function stopQueueProcessing() {
+    await runQueueLifecycleAction(MESSAGE_TYPES.STOP_QUEUE);
+  }
+
+  async function retryFailedQueueItems() {
+    await runQueueLifecycleAction(MESSAGE_TYPES.RETRY_FAILED_QUEUE);
+  }
+
+  async function runQueueLifecycleAction(messageType) {
+    const config = QUEUE_LIFECYCLE_CONFIG[messageType];
+    if (!config) {
+      setStatus("Unsupported queue action.");
+      return;
+    }
+
+    panelStore.setQueueLifecycleInProgress(true);
+    updateQueueActionState();
+
+    try {
+      const response = await queueLifecycleActionImpl(messageType);
+
+      if (!response || response.ok !== true) {
+        setStatus(resolveErrorMessage(response?.error, messageFromError) ?? config.fallbackErrorMessage);
+        return;
+      }
+
+      if (Array.isArray(response.queueItems)) {
+        setQueueItemsState(response.queueItems);
+      }
+      if (response.queueRuntime) {
+        setQueueRuntimeState(response.queueRuntime);
+      }
+
+      if (
+        messageType === MESSAGE_TYPES.RETRY_FAILED_QUEUE &&
+        Number.isFinite(response.retriedCount) &&
+        response.retriedCount > 0
+      ) {
+        setStatus(`Queued ${response.retriedCount} item(s) for retry.`);
+        return;
+      }
+
+      setStatus(config.successStatusMessage);
+    } catch (error) {
+      logger.error("[zotero-archivist] Queue lifecycle action failed.", {
+        messageType,
+        error
+      });
+      setStatus(config.fallbackErrorMessage);
+    } finally {
+      panelStore.setQueueLifecycleInProgress(false);
+      updateQueueActionState();
+    }
+  }
+
+  async function addSelectedLinksToQueue() {
+    const selectedLinks = getCollectedLinks().filter((link) => link.selected !== false);
+    if (selectedLinks.length === 0) {
+      setStatus("Select at least one link to add to queue.");
+      return;
+    }
+
+    panelStore.setQueueAuthoringInProgress(true);
+    updateQueueActionState();
+
+    try {
+      const response = await authorQueueFromSelectionActionImpl(selectedLinks);
+
+      if (!response || response.ok !== true) {
+        setStatus(
+          resolveErrorMessage(response?.error, messageFromError) ??
+            "Failed to add selected links to queue."
+        );
+        return;
+      }
+
+      setQueueItemsState(response.queueItems);
+      const addedCount = Number.isFinite(response.addedCount) ? response.addedCount : 0;
+      const skippedCount = Number.isFinite(response.skippedCount) ? response.skippedCount : 0;
+
+      if (addedCount === 0 && skippedCount > 0) {
+        setStatus("Selected links are already in queue.");
+        return;
+      }
+
+      if (skippedCount > 0) {
+        setStatus(`Added ${addedCount} link(s) to queue (${skippedCount} already queued).`);
+        return;
+      }
+
+      setStatus(`Added ${addedCount} link(s) to queue.`);
+    } catch (error) {
+      logger.error("[zotero-archivist] Failed to add selected links to queue.", error);
+      setStatus("Failed to add selected links to queue.");
+    } finally {
+      panelStore.setQueueAuthoringInProgress(false);
+      updateQueueActionState();
+    }
+  }
+
+  async function clearQueueItems() {
+    if (getQueueItems().length === 0) {
+      setStatus("Queue is already empty.");
+      return;
+    }
+
+    panelStore.setQueueClearingInProgress(true);
+    updateQueueActionState();
+
+    try {
+      const response = await clearQueueActionImpl();
+
+      if (!response || response.ok !== true) {
+        setStatus(resolveErrorMessage(response?.error, messageFromError) ?? "Failed to clear queue.");
+        return;
+      }
+
+      setQueueItemsState(response.queueItems);
+      if (response.queueRuntime) {
+        setQueueRuntimeState(response.queueRuntime);
+      }
+      setStatus("Cleared queue.");
+    } catch (error) {
+      logger.error("[zotero-archivist] Failed to clear queue.", error);
+      setStatus("Failed to clear queue.");
+    } finally {
+      panelStore.setQueueClearingInProgress(false);
+      updateQueueActionState();
+    }
+  }
+
+  return {
+    startQueueProcessing,
+    pauseQueueProcessing,
+    resumeQueueProcessing,
+    stopQueueProcessing,
+    retryFailedQueueItems,
+    addSelectedLinksToQueue,
+    clearQueueItems
+  };
+}
+
+function resolveErrorMessage(error, messageFromError) {
+  if (typeof messageFromError !== "function") {
+    return null;
+  }
+
+  return messageFromError(error);
+}

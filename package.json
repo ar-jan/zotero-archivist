@@ -1,0 +1,8 @@
+{
+  "name": "zotero-archivist",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.mjs",
+    "test:watch": "node --test --watch tests/*.mjs"
+  }
+}
