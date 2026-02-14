@@ -106,13 +106,6 @@ Last updated: 2026-02-14
     - `zotero/provider-connector-bridge.js` health-check and save error semantics.
   - Why: Connector internals are unofficial/volatile, so contract tests provide early warning when bridge assumptions break.
 
-- [ ] Expand diagnostics UX and add a bridge compatibility kill switch.
-  - Scope:
-    - Keep diagnostics visible/actionable in the panel.
-    - Add a straightforward runtime disable path for connector bridge regressions.
-  - Why: When connector behavior changes, users need clear failure context and a safe fallback switch.
-  - Note: Connector bridge remains the only supported save path, so no user-facing kill switch is exposed.
-
 - [x] Resolve settings-path mismatch (implement or remove).
   - Scope:
     - Either wire provider settings controls from panel to `SET_PROVIDER_SETTINGS`, or remove dead surface area until needed.
