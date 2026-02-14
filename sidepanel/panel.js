@@ -597,6 +597,7 @@ function handleStorageChange(changes, areaName) {
 }
 
 async function updateProviderSettings() {
+  const requestedConnectorBridgeEnabled = enableConnectorBridgeInput.checked;
   providerSettingsInProgress = true;
   updateQueueActionState();
   renderIntegrationState();
@@ -606,7 +607,7 @@ async function updateProviderSettings() {
       type: MESSAGE_TYPES.SET_PROVIDER_SETTINGS,
       payload: {
         settings: {
-          connectorBridgeEnabled: enableConnectorBridgeInput.checked
+          connectorBridgeEnabled: requestedConnectorBridgeEnabled
         }
       }
     });
