@@ -2,7 +2,11 @@ import { createConnectorBridgeProvider } from "../zotero/provider-connector-brid
 
 const CONNECTOR_BRIDGE_DISABLED_MESSAGE = "Connector bridge is disabled.";
 
-export function createProviderOrchestrator({ getProviderSettings, saveProviderDiagnostics }) {
+export function createProviderOrchestrator({
+  getProviderSettings,
+  saveProviderDiagnostics,
+  createConnectorBridgeProviderImpl = createConnectorBridgeProvider
+}) {
   async function saveQueueItemWithProvider({ queueItem, tabId }) {
     const { provider, diagnostics, unavailableReason } = await resolveSaveProvider({ tabId });
     if (!provider || typeof provider.saveWebPageWithSnapshot !== "function") {
@@ -73,7 +77,7 @@ export function createProviderOrchestrator({ getProviderSettings, saveProviderDi
     let connectorHealthMessage = null;
 
     if (providerSettings.connectorBridgeEnabled) {
-      const connectorBridgeProvider = createConnectorBridgeProvider();
+      const connectorBridgeProvider = createConnectorBridgeProviderImpl();
       try {
         connectorHealth = await connectorBridgeProvider.checkHealth({ tabId });
       } catch (error) {

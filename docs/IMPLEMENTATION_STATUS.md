@@ -74,6 +74,10 @@ Last updated: 2026-02-14
   - start/pause/resume command behavior
   - stop command cancellation/cleanup behavior
   - retry-failed command reset behavior
+- Added provider contract tests:
+  - `tests/provider-orchestrator.test.mjs` for provider selection and diagnostics propagation.
+  - `tests/provider-connector-bridge.test.mjs` for health/save contract semantics.
+  - `tests/test-helpers/bridge-chrome-mock.mjs` for deterministic bridge/chrome API mocking.
 
 ## Post-Refactor TODOs
 
@@ -90,7 +94,7 @@ Last updated: 2026-02-14
     - Message-handler/service-worker command behavior that controls queue runtime and item retry/reset semantics.
   - Why: These user-triggered control paths are critical operational behavior and should be validated independently from queue-engine internals.
 
-- [ ] Add provider-orchestrator and connector-bridge contract tests.
+- [x] Add provider-orchestrator and connector-bridge contract tests.
   - Scope:
     - `background/provider-orchestrator.js` provider resolution and diagnostics updates.
     - `zotero/provider-connector-bridge.js` health-check and save error semantics.
