@@ -63,16 +63,27 @@ Last updated: 2026-02-14
   - `sidepanel/actions.js`
   - `sidepanel/render.js`
 - Added contract-style tests for shared normalization and routing behavior in `tests/shared-state.test.mjs`.
+- Added queue-engine transition tests in `tests/queue-engine.test.mjs` covering:
+  - pending -> opening_tab
+  - active save success/failure
+  - alarm timeout failure handling
+  - active tab removal handling
+  - recovery resume behavior
 
 ## Post-Refactor TODOs
 
 - [ ] Phase 4: Add diagnostics, contract tests, and hardening.
   - Why: This is the remaining planned phase and the main gap between feature completion and production readiness.
 
-- [ ] Add queue-engine transition tests.
+- [x] Add queue-engine transition tests.
   - Scope:
-    - `background/queue-engine.js` transitions for timeout, tab removal, pause/resume/stop, retry, and recovery paths.
+    - `background/queue-engine.js` transitions for pending tab open, save success/failure, timeout, tab removal, and recovery.
   - Why: Queue behavior is stateful and event-driven; regressions are likely without targeted transition tests.
+
+- [ ] Add lifecycle command tests for start/pause/resume/stop/retry flows.
+  - Scope:
+    - Message-handler/service-worker command behavior that controls queue runtime and item retry/reset semantics.
+  - Why: These user-triggered control paths are critical operational behavior and should be validated independently from queue-engine internals.
 
 - [ ] Add provider-orchestrator and connector-bridge contract tests.
   - Scope:

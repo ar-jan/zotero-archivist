@@ -25,6 +25,7 @@ export function createQueueEngine({
       .catch((error) => {
         console.error("[zotero-archivist] Queue engine run failed.", { trigger, error });
       });
+    return queueEngineRun;
   }
 
   async function runQueueEngine(_trigger) {
@@ -349,6 +350,10 @@ export function createQueueEngine({
     }
   }
 
+  function waitForIdle() {
+    return queueEngineRun;
+  }
+
   return {
     clearQueueAlarm,
     closeTabIfPresent,
@@ -356,6 +361,7 @@ export function createQueueEngine({
     handleQueueTabRemoved,
     handleQueueTabUpdated,
     recoverQueueEngineState,
-    runQueueEngineSoon
+    runQueueEngineSoon,
+    waitForIdle
   };
 }
