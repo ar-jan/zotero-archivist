@@ -2,10 +2,19 @@
 
 A Chromium browser extension to collect links from a web page and archive selected pages to Zotero via the Zotero Connector browser plugin.
 
-## Planning Docs
+## Usage
 
-- High-level architecture and implementation plan: `docs/ARCHITECTURE.md`
+- Have [Zotero](https://www.zotero.org/download/) installed
+- Have the official [Zotero Connector](https://chromewebstore.google.com/detail/zotero-connector/ekhagklcjbdpajgpjgmbionohlpdbjgc) installed
+- Install this Chromium extension
 
-## Test Command
+## Documentation
 
-- Run all tests: `npm test`
+- Architecture and design overview: `docs/ARCHITECTURE.md`
+
+## Development
+
+```sh
+# Run all tests:
+npm test
+```
