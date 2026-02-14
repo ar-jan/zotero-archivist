@@ -57,6 +57,7 @@ Last updated: 2026-02-14
   - `background/storage-repo.js`
   - `background/provider-orchestrator.js`
   - `background/queue-engine.js`
+  - `background/queue-lifecycle.js`
   - `background/message-router.js`
 - Split sidepanel support concerns into modules:
   - `sidepanel/store.js`
@@ -69,6 +70,10 @@ Last updated: 2026-02-14
   - alarm timeout failure handling
   - active tab removal handling
   - recovery resume behavior
+- Added lifecycle command tests in `tests/queue-lifecycle.test.mjs` covering:
+  - start/pause/resume command behavior
+  - stop command cancellation/cleanup behavior
+  - retry-failed command reset behavior
 
 ## Post-Refactor TODOs
 
@@ -80,7 +85,7 @@ Last updated: 2026-02-14
     - `background/queue-engine.js` transitions for pending tab open, save success/failure, timeout, tab removal, and recovery.
   - Why: Queue behavior is stateful and event-driven; regressions are likely without targeted transition tests.
 
-- [ ] Add lifecycle command tests for start/pause/resume/stop/retry flows.
+- [x] Add lifecycle command tests for start/pause/resume/stop/retry flows.
   - Scope:
     - Message-handler/service-worker command behavior that controls queue runtime and item retry/reset semantics.
   - Why: These user-triggered control paths are critical operational behavior and should be validated independently from queue-engine internals.
