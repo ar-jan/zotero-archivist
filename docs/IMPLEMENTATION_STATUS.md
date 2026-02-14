@@ -63,3 +63,40 @@ Last updated: 2026-02-14
   - `sidepanel/actions.js`
   - `sidepanel/render.js`
 - Added contract-style tests for shared normalization and routing behavior in `tests/shared-state.test.mjs`.
+
+## Post-Refactor TODOs
+
+- [ ] Phase 4: Add diagnostics, contract tests, and hardening.
+  - Why: This is the remaining planned phase and the main gap between feature completion and production readiness.
+
+- [ ] Add queue-engine transition tests.
+  - Scope:
+    - `background/queue-engine.js` transitions for timeout, tab removal, pause/resume/stop, retry, and recovery paths.
+  - Why: Queue behavior is stateful and event-driven; regressions are likely without targeted transition tests.
+
+- [ ] Add provider-orchestrator and connector-bridge contract tests.
+  - Scope:
+    - `background/provider-orchestrator.js` provider resolution and diagnostics updates.
+    - `zotero/provider-connector-bridge.js` health-check and save error semantics.
+  - Why: Connector internals are unofficial/volatile, so contract tests provide early warning when bridge assumptions break.
+
+- [ ] Expand diagnostics UX and add a bridge compatibility kill switch.
+  - Scope:
+    - Keep diagnostics visible/actionable in the panel.
+    - Add a straightforward runtime disable path for connector bridge regressions.
+  - Why: When connector behavior changes, users need clear failure context and a safe fallback switch.
+
+- [ ] Resolve settings-path mismatch (implement or remove).
+  - Scope:
+    - Either wire provider settings controls from panel to `SET_PROVIDER_SETTINGS`, or remove dead surface area until needed.
+  - Why: Partially wired paths increase maintenance cost and create confusion about supported configuration.
+
+- [ ] Continue splitting sidepanel orchestration into smaller controllers.
+  - Scope:
+    - Incrementally separate selector editing, link curation, and queue lifecycle orchestration in `sidepanel/panel.js`.
+  - Why: Smaller feature-focused modules improve readability, lower merge conflict risk, and make testing easier.
+
+- [ ] Add a stable test command entrypoint.
+  - Scope:
+    - Add a small `package.json` script (or equivalent documented command) for running the test suite consistently.
+  - Why: A single repeatable command reduces friction in CI and local verification workflows.
