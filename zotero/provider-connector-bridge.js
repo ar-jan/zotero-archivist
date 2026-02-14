@@ -1,6 +1,7 @@
 import { SAVE_PROVIDER_MODES } from "../shared/protocol.js";
 import {
   createProviderSaveSuccess,
+  createProviderSaveManual,
   createProviderSaveError
 } from "./provider-interface.js";
 
@@ -9,6 +10,8 @@ const CONNECTOR_BRIDGE_IFRAME_PATH = "chromeMessageIframe/messageIframe.html";
 const BRIDGE_HEALTH_TIMEOUT_MS = 4000;
 const BRIDGE_SAVE_TIMEOUT_MS = 120000;
 const BRIDGE_DEFAULT_FRAME_TIMEOUT_MS = 8000;
+const BRIDGE_UNCONFIRMED_SAVE_MESSAGE =
+  "Connector bridge did not confirm a completed save. Verify save in Zotero and mark manually.";
 
 export function createConnectorBridgeProvider() {
   return {
@@ -48,15 +51,32 @@ export function createConnectorBridgeProvider() {
 
       const tabPayload = {
         id: tab.id,
+        url:
+          typeof tab.url === "string" && tab.url.length > 0
+            ? tab.url
+            : typeof input.url === "string" && input.url.length > 0
+              ? input.url
+              : undefined,
         title:
           typeof input.title === "string" && input.title.trim().length > 0
             ? input.title.trim()
             : typeof tab.title === "string" && tab.title.trim().length > 0
               ? tab.title.trim()
-              : typeof input.url === "string" && input.url.length > 0
-                ? input.url
-                : "Untitled"
+                : typeof input.url === "string" && input.url.length > 0
+                  ? input.url
+                  : "Untitled"
       };
+
+      const injectionResult = await runBridgeCommand({
+        tabId: input.tabId,
+        timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
+        command: ["Connector_Browser.injectTranslationScripts", [tabPayload, 0]]
+      });
+      if (!injectionResult.ok) {
+        return createProviderSaveError(
+          `Connector bridge could not prepare translation scripts: ${injectionResult.error}`
+        );
+      }
 
       const saveResult = await runBridgeCommand({
         tabId: input.tabId,
@@ -65,6 +85,10 @@ export function createConnectorBridgeProvider() {
       });
       if (!saveResult.ok) {
         return createProviderSaveError(`Connector bridge save failed: ${saveResult.error}`);
+      }
+
+      if (!isConfirmedSaveResult(saveResult.result)) {
+        return createProviderSaveManual(BRIDGE_UNCONFIRMED_SAVE_MESSAGE);
       }
 
       return createProviderSaveSuccess();
@@ -148,6 +172,34 @@ function normalizeTimeoutMs(timeoutMs) {
   }
 
   return Math.max(1000, Math.trunc(timeoutMs));
+}
+
+function isConfirmedSaveResult(result) {
+  if (result === null || result === undefined) {
+    return false;
+  }
+
+  if (typeof result === "boolean") {
+    return result;
+  }
+
+  if (Array.isArray(result)) {
+    return true;
+  }
+
+  if (typeof result === "object") {
+    return true;
+  }
+
+  if (typeof result === "string") {
+    return result.trim().length > 0;
+  }
+
+  if (typeof result === "number") {
+    return Number.isFinite(result);
+  }
+
+  return false;
 }
 
 async function executeConnectorBridgeCommandInTab(input) {
