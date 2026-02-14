@@ -321,12 +321,18 @@ body {
 
 .queue-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
 }
 
 #add-selected-to-queue-button,
-#clear-queue-button {
+#clear-queue-button,
+#start-queue-button,
+#pause-queue-button,
+#resume-queue-button,
+#stop-queue-button,
+#retry-failed-queue-button {
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.82rem;
@@ -345,10 +351,36 @@ body {
   color: #333;
 }
 
+#start-queue-button,
+#resume-queue-button {
+  border: 1px solid #0a66c2;
+  background: #fff;
+  color: #0a66c2;
+}
+
+#pause-queue-button,
+#stop-queue-button,
+#retry-failed-queue-button {
+  border: 1px solid #888;
+  background: #fff;
+  color: #333;
+}
+
 #add-selected-to-queue-button[disabled],
-#clear-queue-button[disabled] {
+#clear-queue-button[disabled],
+#start-queue-button[disabled],
+#pause-queue-button[disabled],
+#resume-queue-button[disabled],
+#stop-queue-button[disabled],
+#retry-failed-queue-button[disabled] {
   cursor: default;
   opacity: 0.6;
+}
+
+.queue-runtime-status {
+  color: #555;
+  font-size: 0.78rem;
+  margin: 0 0 8px;
 }
 
 .queue-list {

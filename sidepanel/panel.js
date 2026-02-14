@@ -1,6 +1,7 @@
 import {
   ERROR_CODES,
   MESSAGE_TYPES,
+  STORAGE_KEYS,
   isHttpUrl,
   toOriginPattern
 } from "../shared/protocol.js";
@@ -19,19 +20,27 @@ const invertLinksButton = document.getElementById("invert-links-button");
 const resultsFilterInput = document.getElementById("results-filter-input");
 const queueTitleEl = document.getElementById("queue-title");
 const queueSummaryEl = document.getElementById("queue-summary");
+const queueRuntimeStatusEl = document.getElementById("queue-runtime-status");
 const queueListEl = document.getElementById("queue-list");
 const addSelectedToQueueButton = document.getElementById("add-selected-to-queue-button");
 const clearQueueButton = document.getElementById("clear-queue-button");
+const startQueueButton = document.getElementById("start-queue-button");
+const pauseQueueButton = document.getElementById("pause-queue-button");
+const resumeQueueButton = document.getElementById("resume-queue-button");
+const stopQueueButton = document.getElementById("stop-queue-button");
+const retryFailedQueueButton = document.getElementById("retry-failed-queue-button");
 const rulesSummaryEl = document.getElementById("rules-summary");
 
 let selectorRulesDirty = false;
 let selectorRuleCounter = 0;
 let collectedLinksState = [];
 let queueItemsState = [];
+let queueRuntimeState = createDefaultQueueRuntimeState();
 let resultsFilterQuery = normalizeFilterQuery(resultsFilterInput.value);
 let persistCollectedLinksQueue = Promise.resolve();
 let queueAuthoringInProgress = false;
 let queueClearingInProgress = false;
+let queueLifecycleInProgress = false;
 
 collectButton.addEventListener("click", () => {
   void collectLinks();
@@ -86,6 +95,30 @@ clearQueueButton.addEventListener("click", () => {
   void clearQueueItems();
 });
 
+startQueueButton.addEventListener("click", () => {
+  void startQueueProcessing();
+});
+
+pauseQueueButton.addEventListener("click", () => {
+  void pauseQueueProcessing();
+});
+
+resumeQueueButton.addEventListener("click", () => {
+  void resumeQueueProcessing();
+});
+
+stopQueueButton.addEventListener("click", () => {
+  void stopQueueProcessing();
+});
+
+retryFailedQueueButton.addEventListener("click", () => {
+  void retryFailedQueueItems();
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  handleStorageChange(changes, areaName);
+});
+
 void loadPanelState();
 
 async function loadPanelState() {
@@ -103,10 +136,12 @@ async function loadPanelState() {
   const selectorRules = normalizeSelectorRules(response.selectorRules);
   const collectedLinks = normalizeCollectedLinks(response.collectedLinks);
   const queueItems = normalizeQueueItems(response.queueItems);
+  const queueRuntime = normalizeQueueRuntime(response.queueRuntime);
 
   renderSelectorRules(selectorRules);
   setCollectedLinksState(collectedLinks);
   setQueueItemsState(queueItems);
+  setQueueRuntimeState(queueRuntime);
   setSelectorRulesDirty(false);
   setStatus("Ready.");
 }
@@ -498,6 +533,116 @@ function setCollectedLinksState(links) {
 function setQueueItemsState(queueItems) {
   queueItemsState = normalizeQueueItems(queueItems);
   renderQueue(queueItemsState);
+  renderQueueRuntimeStatus(queueRuntimeState);
+}
+
+function setQueueRuntimeState(queueRuntime) {
+  queueRuntimeState = normalizeQueueRuntime(queueRuntime);
+  renderQueueRuntimeStatus(queueRuntimeState);
+  updateQueueActionState();
+}
+
+function handleStorageChange(changes, areaName) {
+  if (areaName !== "local") {
+    return;
+  }
+
+  const queueItemsChange = changes[STORAGE_KEYS.QUEUE_ITEMS];
+  if (queueItemsChange) {
+    setQueueItemsState(queueItemsChange.newValue);
+  }
+
+  const queueRuntimeChange = changes[STORAGE_KEYS.QUEUE_RUNTIME];
+  if (queueRuntimeChange) {
+    setQueueRuntimeState(queueRuntimeChange.newValue);
+  }
+}
+
+async function startQueueProcessing() {
+  await runQueueLifecycleAction({
+    messageType: MESSAGE_TYPES.START_QUEUE,
+    fallbackErrorMessage: "Failed to start queue.",
+    successStatusMessage: "Queue started."
+  });
+}
+
+async function pauseQueueProcessing() {
+  await runQueueLifecycleAction({
+    messageType: MESSAGE_TYPES.PAUSE_QUEUE,
+    fallbackErrorMessage: "Failed to pause queue.",
+    successStatusMessage: "Queue paused."
+  });
+}
+
+async function resumeQueueProcessing() {
+  await runQueueLifecycleAction({
+    messageType: MESSAGE_TYPES.RESUME_QUEUE,
+    fallbackErrorMessage: "Failed to resume queue.",
+    successStatusMessage: "Queue resumed."
+  });
+}
+
+async function stopQueueProcessing() {
+  await runQueueLifecycleAction({
+    messageType: MESSAGE_TYPES.STOP_QUEUE,
+    fallbackErrorMessage: "Failed to stop queue.",
+    successStatusMessage: "Queue stopped."
+  });
+}
+
+async function retryFailedQueueItems() {
+  await runQueueLifecycleAction({
+    messageType: MESSAGE_TYPES.RETRY_FAILED_QUEUE,
+    fallbackErrorMessage: "Failed to retry queue items.",
+    successStatusMessage: "Retry queued for failed items."
+  });
+}
+
+async function runQueueLifecycleAction({
+  messageType,
+  fallbackErrorMessage,
+  successStatusMessage
+}) {
+  queueLifecycleInProgress = true;
+  updateQueueActionState();
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: messageType
+    });
+
+    if (!response || response.ok !== true) {
+      setStatus(messageFromError(response?.error) ?? fallbackErrorMessage);
+      return;
+    }
+
+    if (Array.isArray(response.queueItems)) {
+      setQueueItemsState(response.queueItems);
+    }
+    if (response.queueRuntime) {
+      setQueueRuntimeState(response.queueRuntime);
+    }
+
+    if (
+      messageType === MESSAGE_TYPES.RETRY_FAILED_QUEUE &&
+      Number.isFinite(response.retriedCount) &&
+      response.retriedCount > 0
+    ) {
+      setStatus(`Queued ${response.retriedCount} item(s) for retry.`);
+      return;
+    }
+
+    setStatus(successStatusMessage);
+  } catch (error) {
+    console.error("[zotero-archivist] Queue lifecycle action failed.", {
+      messageType,
+      error
+    });
+    setStatus(fallbackErrorMessage);
+  } finally {
+    queueLifecycleInProgress = false;
+    updateQueueActionState();
+  }
 }
 
 async function addSelectedLinksToQueue() {
@@ -567,6 +712,9 @@ async function clearQueueItems() {
     }
 
     setQueueItemsState(response.queueItems);
+    if (response.queueRuntime) {
+      setQueueRuntimeState(response.queueRuntime);
+    }
     setStatus("Cleared queue.");
   } catch (error) {
     console.error("[zotero-archivist] Failed to clear queue.", error);
@@ -827,6 +975,35 @@ function renderQueue(queueItems) {
   }
 }
 
+function renderQueueRuntimeStatus(queueRuntime) {
+  if (!queueRuntime || typeof queueRuntime !== "object") {
+    queueRuntimeStatusEl.textContent = "Queue runtime: idle.";
+    return;
+  }
+
+  const counts = getQueueItemCounts(queueItemsState);
+  if (queueRuntime.status === "running") {
+    if (typeof queueRuntime.activeQueueItemId === "string") {
+      queueRuntimeStatusEl.textContent = "Queue runtime: running (processing active item).";
+      return;
+    }
+    queueRuntimeStatusEl.textContent = "Queue runtime: running.";
+    return;
+  }
+
+  if (queueRuntime.status === "paused") {
+    if (counts.manualRequiredCount > 0) {
+      queueRuntimeStatusEl.textContent =
+        "Queue runtime: paused (manual-required item present).";
+      return;
+    }
+    queueRuntimeStatusEl.textContent = "Queue runtime: paused.";
+    return;
+  }
+
+  queueRuntimeStatusEl.textContent = "Queue runtime: idle.";
+}
+
 function updateResultsSummary({ selectedCount, totalCount, filteredCount }) {
   const summaryParts = [`${selectedCount} selected`];
   if (resultsFilterQuery.length > 0) {
@@ -847,9 +1024,25 @@ function updateResultsControlState({ totalCount, filteredCount }) {
 
 function updateQueueActionState() {
   const selectedCount = collectedLinksState.filter((link) => link.selected !== false).length;
-  const queueBusy = queueAuthoringInProgress || queueClearingInProgress;
+  const queueBusy = queueAuthoringInProgress || queueClearingInProgress || queueLifecycleInProgress;
+  const queueCounts = getQueueItemCounts(queueItemsState);
+  const hasActiveQueueItem = typeof queueRuntimeState.activeQueueItemId === "string";
+
   addSelectedToQueueButton.disabled = queueBusy || selectedCount === 0;
-  clearQueueButton.disabled = queueBusy || queueItemsState.length === 0;
+  clearQueueButton.disabled =
+    queueBusy || queueItemsState.length === 0 || queueRuntimeState.status === "running";
+  startQueueButton.disabled =
+    queueBusy || queueRuntimeState.status !== "idle" || queueCounts.pendingCount === 0;
+  pauseQueueButton.disabled = queueBusy || queueRuntimeState.status !== "running";
+  resumeQueueButton.disabled =
+    queueBusy ||
+    queueRuntimeState.status !== "paused" ||
+    (queueCounts.pendingCount === 0 && !hasActiveQueueItem);
+  stopQueueButton.disabled = queueBusy || queueRuntimeState.status === "idle";
+  retryFailedQueueButton.disabled =
+    queueBusy ||
+    queueRuntimeState.status === "running" ||
+    queueCounts.retriableCount === 0;
 }
 
 function createResultMessageItem(message) {
@@ -1004,21 +1197,97 @@ function normalizeQueueStatus(status) {
   }
 }
 
+function normalizeQueueRuntime(input) {
+  if (!input || typeof input !== "object") {
+    return createDefaultQueueRuntimeState();
+  }
+
+  const status =
+    typeof input.status === "string" &&
+    (input.status === "idle" || input.status === "running" || input.status === "paused")
+      ? input.status
+      : "idle";
+
+  const activeQueueItemId =
+    typeof input.activeQueueItemId === "string" && input.activeQueueItemId.length > 0
+      ? input.activeQueueItemId
+      : null;
+
+  const activeTabId = Number.isInteger(input.activeTabId) ? input.activeTabId : null;
+
+  const updatedAt =
+    Number.isFinite(input.updatedAt) && input.updatedAt > 0 ? Math.trunc(input.updatedAt) : Date.now();
+
+  if (status === "idle") {
+    return {
+      status,
+      activeQueueItemId: null,
+      activeTabId: null,
+      updatedAt
+    };
+  }
+
+  if (activeQueueItemId === null || activeTabId === null) {
+    return {
+      status,
+      activeQueueItemId: null,
+      activeTabId: null,
+      updatedAt
+    };
+  }
+
+  return {
+    status,
+    activeQueueItemId,
+    activeTabId,
+    updatedAt
+  };
+}
+
+function createDefaultQueueRuntimeState() {
+  return {
+    status: "idle",
+    activeQueueItemId: null,
+    activeTabId: null,
+    updatedAt: Date.now()
+  };
+}
+
+function getQueueItemCounts(queueItems) {
+  const safeQueueItems = Array.isArray(queueItems) ? queueItems : [];
+  const pendingCount = safeQueueItems.filter((item) => item.status === "pending").length;
+  const archivedCount = safeQueueItems.filter((item) => item.status === "archived").length;
+  const failedCount = safeQueueItems.filter((item) => item.status === "failed").length;
+  const manualRequiredCount = safeQueueItems.filter((item) => item.status === "manual_required").length;
+  const cancelledCount = safeQueueItems.filter((item) => item.status === "cancelled").length;
+  const retriableCount = failedCount + manualRequiredCount + cancelledCount;
+
+  return {
+    pendingCount,
+    archivedCount,
+    failedCount,
+    manualRequiredCount,
+    cancelledCount,
+    retriableCount
+  };
+}
+
 function summarizeQueueCounts(queueItems) {
   if (!Array.isArray(queueItems) || queueItems.length === 0) {
     return "0 pending";
   }
 
-  const pendingCount = queueItems.filter((item) => item.status === "pending").length;
-  const archivedCount = queueItems.filter((item) => item.status === "archived").length;
-  const failedCount = queueItems.filter((item) => item.status === "failed").length;
+  const counts = getQueueItemCounts(queueItems);
 
-  const summaryParts = [`${pendingCount} pending`];
-  if (archivedCount > 0) {
-    summaryParts.push(`${archivedCount} archived`);
+  const summaryParts = [`${counts.pendingCount} pending`];
+  if (counts.archivedCount > 0) {
+    summaryParts.push(`${counts.archivedCount} archived`);
   }
-  if (failedCount > 0) {
-    summaryParts.push(`${failedCount} failed`);
+  if (counts.failedCount > 0) {
+    summaryParts.push(`${counts.failedCount} failed`);
+  }
+  if (counts.manualRequiredCount > 0) {
+    summaryParts.push(`${counts.manualRequiredCount} manual`);
   }
 
   return summaryParts.join(" • ");

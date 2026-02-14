@@ -20,16 +20,22 @@ const QUEUE_ITEM_STATUSES = new Set([
   "cancelled"
 ]);
 
+const QUEUE_RUNTIME_STATUSES = new Set(["idle", "running", "paused"]);
+const QUEUE_ACTIVE_ITEM_STATUSES = new Set(["opening_tab", "saving_snapshot"]);
+const QUEUE_ALARM_NAME = "queue-engine-watchdog";
+const QUEUE_ALARM_DELAY_MINUTES = 1;
+const QUEUE_TAB_LOAD_TIMEOUT_MESSAGE = "Queue tab did not finish loading before timeout.";
+const QUEUE_TAB_CLOSED_MESSAGE = "Queue tab was closed before loading completed.";
+const QUEUE_MANUAL_PROVIDER_MESSAGE = "Manual save provider is not implemented yet.";
+
+let queueEngineRun = Promise.resolve();
+
 chrome.runtime.onInstalled.addListener(() => {
-  void ensureSelectorRules();
-  void ensureQueueItems();
-  void configureSidePanelBehavior();
+  void initializeExtensionState();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void ensureSelectorRules();
-  void ensureQueueItems();
-  void configureSidePanelBehavior();
+  void initializeExtensionState();
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -42,6 +48,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm?.name !== QUEUE_ALARM_NAME) {
+    return;
+  }
+
+  void handleQueueAlarm();
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  void handleQueueTabUpdated(tabId, changeInfo);
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void handleQueueTabRemoved(tabId);
+});
+
+async function initializeExtensionState() {
+  await Promise.all([ensureSelectorRules(), ensureQueueItems(), ensureQueueRuntime()]);
+  await configureSidePanelBehavior();
+  await recoverQueueEngineState();
+}
 
 async function handleMessage(message, _sender) {
   if (!message || typeof message.type !== "string") {
@@ -59,6 +87,16 @@ async function handleMessage(message, _sender) {
       return authorQueueFromSelection(message.payload?.links);
     case MESSAGE_TYPES.CLEAR_QUEUE:
       return clearQueue();
+    case MESSAGE_TYPES.START_QUEUE:
+      return startQueue();
+    case MESSAGE_TYPES.PAUSE_QUEUE:
+      return pauseQueue();
+    case MESSAGE_TYPES.RESUME_QUEUE:
+      return resumeQueue();
+    case MESSAGE_TYPES.STOP_QUEUE:
+      return stopQueue();
+    case MESSAGE_TYPES.RETRY_FAILED_QUEUE:
+      return retryFailedQueue();
     case MESSAGE_TYPES.SET_SELECTOR_RULES:
       return setSelectorRules(message.payload?.rules);
     default:
@@ -79,6 +117,7 @@ async function configureSidePanelBehavior() {
 async function getPanelState() {
   const selectorRules = await getSelectorRules();
   const queueItems = await getQueueItems();
+  const queueRuntime = await getQueueRuntime();
   const stored = await chrome.storage.local.get(STORAGE_KEYS.COLLECTED_LINKS);
   const collectedLinks = normalizeCollectedLinks(stored[STORAGE_KEYS.COLLECTED_LINKS]);
 
@@ -91,7 +130,8 @@ async function getPanelState() {
   return {
     selectorRules,
     collectedLinks,
-    queueItems
+    queueItems,
+    queueRuntime
   };
 }
 
@@ -211,9 +251,7 @@ async function authorQueueFromSelection(rawLinks) {
     });
   }
 
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.QUEUE_ITEMS]: nextQueueItems
-  });
+  await saveQueueItems(nextQueueItems);
 
   return createSuccess({
     queueItems: nextQueueItems,
@@ -224,13 +262,442 @@ async function authorQueueFromSelection(rawLinks) {
 }
 
 async function clearQueue() {
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.QUEUE_ITEMS]: []
-  });
+  const queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status === "running") {
+    return createError(ERROR_CODES.BAD_REQUEST, "Stop or pause the queue before clearing it.");
+  }
+
+  await saveQueueItems([]);
+  const nextRuntime = {
+    ...clearQueueRuntimeActive(queueRuntime),
+    status: "idle",
+    updatedAt: Date.now()
+  };
+  await saveQueueRuntime(nextRuntime);
 
   return createSuccess({
-    queueItems: []
+    queueItems: [],
+    queueRuntime: nextRuntime
   });
+}
+
+async function startQueue() {
+  const queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status === "running") {
+    return createSuccess({
+      queueRuntime,
+      queueItems: await getQueueItems(),
+      alreadyRunning: true
+    });
+  }
+
+  if (queueRuntime.status === "paused") {
+    return createError(ERROR_CODES.BAD_REQUEST, "Queue is paused. Use Resume Queue.");
+  }
+
+  const queueItems = await getQueueItems();
+  const pendingCount = queueItems.filter((item) => item.status === "pending").length;
+  if (pendingCount === 0) {
+    return createError(ERROR_CODES.BAD_REQUEST, "Queue has no pending items.");
+  }
+
+  const nextRuntime = {
+    ...clearQueueRuntimeActive(queueRuntime),
+    status: "running",
+    updatedAt: Date.now()
+  };
+  await saveQueueRuntime(nextRuntime);
+  runQueueEngineSoon("start");
+
+  return createSuccess({
+    queueRuntime: nextRuntime,
+    queueItems,
+    pendingCount
+  });
+}
+
+async function pauseQueue() {
+  const queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status !== "running") {
+    return createError(ERROR_CODES.BAD_REQUEST, "Queue is not running.");
+  }
+
+  const nextRuntime = {
+    ...queueRuntime,
+    status: "paused",
+    updatedAt: Date.now()
+  };
+  await saveQueueRuntime(nextRuntime);
+  await clearQueueAlarm();
+
+  return createSuccess({
+    queueRuntime: nextRuntime,
+    queueItems: await getQueueItems()
+  });
+}
+
+async function resumeQueue() {
+  const queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status !== "paused") {
+    return createError(ERROR_CODES.BAD_REQUEST, "Queue is not paused.");
+  }
+
+  const queueItems = await getQueueItems();
+  const hasPending = queueItems.some((item) => item.status === "pending");
+  if (!hasPending && !queueRuntime.activeQueueItemId) {
+    return createError(ERROR_CODES.BAD_REQUEST, "Queue has no pending items.");
+  }
+
+  const nextRuntime = {
+    ...queueRuntime,
+    status: "running",
+    updatedAt: Date.now()
+  };
+  await saveQueueRuntime(nextRuntime);
+  runQueueEngineSoon("resume");
+
+  return createSuccess({
+    queueRuntime: nextRuntime,
+    queueItems
+  });
+}
+
+async function stopQueue() {
+  const queueRuntime = await getQueueRuntime();
+  const queueItems = await getQueueItems();
+
+  let nextQueueItems = queueItems;
+  if (typeof queueRuntime.activeQueueItemId === "string") {
+    const activeIndex = nextQueueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
+    if (activeIndex >= 0 && isQueueItemActiveStatus(nextQueueItems[activeIndex].status)) {
+      nextQueueItems = [...nextQueueItems];
+      nextQueueItems[activeIndex] = {
+        ...nextQueueItems[activeIndex],
+        status: "cancelled",
+        lastError: "Queue was stopped before completion.",
+        updatedAt: Date.now()
+      };
+      await saveQueueItems(nextQueueItems);
+    }
+  }
+
+  const nextRuntime = {
+    ...clearQueueRuntimeActive(queueRuntime),
+    status: "idle",
+    updatedAt: Date.now()
+  };
+  await saveQueueRuntime(nextRuntime);
+  await clearQueueAlarm();
+
+  return createSuccess({
+    queueRuntime: nextRuntime,
+    queueItems: nextQueueItems
+  });
+}
+
+async function retryFailedQueue() {
+  const queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status === "running") {
+    return createError(ERROR_CODES.BAD_REQUEST, "Pause or stop the queue before retrying items.");
+  }
+
+  const queueItems = await getQueueItems();
+  let retriedCount = 0;
+  const nextQueueItems = queueItems.map((item) => {
+    if (item.status !== "failed" && item.status !== "cancelled" && item.status !== "manual_required") {
+      return item;
+    }
+
+    retriedCount += 1;
+    return {
+      ...item,
+      status: "pending",
+      updatedAt: Date.now(),
+      lastError: undefined
+    };
+  });
+
+  if (retriedCount === 0) {
+    return createError(ERROR_CODES.BAD_REQUEST, "Queue has no failed, cancelled, or manual-required items.");
+  }
+
+  await saveQueueItems(nextQueueItems);
+
+  return createSuccess({
+    queueItems: nextQueueItems,
+    queueRuntime,
+    retriedCount
+  });
+}
+
+function runQueueEngineSoon(trigger) {
+  queueEngineRun = queueEngineRun
+    .catch(() => undefined)
+    .then(() => runQueueEngine(trigger))
+    .catch((error) => {
+      console.error("[zotero-archivist] Queue engine run failed.", { trigger, error });
+    });
+}
+
+async function runQueueEngine(_trigger) {
+  let queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status !== "running") {
+    await clearQueueAlarm();
+    return;
+  }
+
+  let queueItems = await getQueueItems();
+
+  if (typeof queueRuntime.activeQueueItemId === "string") {
+    const activeIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
+    if (activeIndex < 0) {
+      queueRuntime = {
+        ...clearQueueRuntimeActive(queueRuntime),
+        updatedAt: Date.now()
+      };
+      await saveQueueRuntime(queueRuntime);
+      await clearQueueAlarm();
+      return;
+    }
+
+    if (!Number.isInteger(queueRuntime.activeTabId)) {
+      queueItems = [...queueItems];
+      queueItems[activeIndex] = markQueueItemFailed(
+        queueItems[activeIndex],
+        "Queue runtime lost active tab context."
+      );
+      await saveQueueItems(queueItems);
+      queueRuntime = {
+        ...clearQueueRuntimeActive(queueRuntime),
+        updatedAt: Date.now()
+      };
+      await saveQueueRuntime(queueRuntime);
+      await clearQueueAlarm();
+      runQueueEngineSoon("missing-active-tab-id");
+      return;
+    }
+
+    const activeTabState = await getQueueTabState(queueRuntime.activeTabId);
+    if (activeTabState === "loading") {
+      await scheduleQueueAlarm();
+      return;
+    }
+
+    if (activeTabState === "missing") {
+      queueItems = [...queueItems];
+      queueItems[activeIndex] = markQueueItemFailed(queueItems[activeIndex], QUEUE_TAB_CLOSED_MESSAGE);
+      await saveQueueItems(queueItems);
+      queueRuntime = {
+        ...clearQueueRuntimeActive(queueRuntime),
+        updatedAt: Date.now()
+      };
+      await saveQueueRuntime(queueRuntime);
+      await clearQueueAlarm();
+      runQueueEngineSoon("active-tab-missing");
+      return;
+    }
+
+    queueItems = [...queueItems];
+    queueItems[activeIndex] = {
+      ...queueItems[activeIndex],
+      status: "saving_snapshot",
+      updatedAt: Date.now()
+    };
+    queueItems[activeIndex] = {
+      ...queueItems[activeIndex],
+      status: "manual_required",
+      lastError: QUEUE_MANUAL_PROVIDER_MESSAGE,
+      updatedAt: Date.now()
+    };
+    await saveQueueItems(queueItems);
+
+    queueRuntime = {
+      ...clearQueueRuntimeActive(queueRuntime),
+      status: "paused",
+      updatedAt: Date.now()
+    };
+    await saveQueueRuntime(queueRuntime);
+    await clearQueueAlarm();
+    return;
+  }
+
+  queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status !== "running") {
+    await clearQueueAlarm();
+    return;
+  }
+
+  queueItems = await getQueueItems();
+  const nextItemIndex = queueItems.findIndex((item) => item.status === "pending");
+  if (nextItemIndex < 0) {
+    const nextRuntime = {
+      ...clearQueueRuntimeActive(queueRuntime),
+      status: "idle",
+      updatedAt: Date.now()
+    };
+    await saveQueueRuntime(nextRuntime);
+    await clearQueueAlarm();
+    return;
+  }
+
+  const nextQueueItems = [...queueItems];
+  const itemToRun = {
+    ...nextQueueItems[nextItemIndex],
+    status: "opening_tab",
+    attempts: nextQueueItems[nextItemIndex].attempts + 1,
+    updatedAt: Date.now()
+  };
+  nextQueueItems[nextItemIndex] = itemToRun;
+  await saveQueueItems(nextQueueItems);
+
+  let openedTabId;
+  try {
+    const openedTab = await chrome.tabs.create({
+      url: itemToRun.url,
+      active: false
+    });
+    openedTabId = openedTab?.id;
+  } catch (error) {
+    nextQueueItems[nextItemIndex] = markQueueItemFailed(
+      itemToRun,
+      `Failed to open queue tab: ${String(error)}`
+    );
+    await saveQueueItems(nextQueueItems);
+    runQueueEngineSoon("tab-create-error");
+    return;
+  }
+
+  if (!Number.isInteger(openedTabId)) {
+    nextQueueItems[nextItemIndex] = markQueueItemFailed(itemToRun, "Queue tab did not provide a tab id.");
+    await saveQueueItems(nextQueueItems);
+    runQueueEngineSoon("missing-tab-id");
+    return;
+  }
+
+  const nextRuntime = {
+    ...queueRuntime,
+    activeQueueItemId: itemToRun.id,
+    activeTabId: openedTabId,
+    updatedAt: Date.now()
+  };
+  await saveQueueRuntime(nextRuntime);
+  await scheduleQueueAlarm();
+}
+
+async function handleQueueAlarm() {
+  const queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status !== "running") {
+    return;
+  }
+
+  if (
+    typeof queueRuntime.activeQueueItemId === "string" &&
+    Number.isInteger(queueRuntime.activeTabId)
+  ) {
+    const activeTabState = await getQueueTabState(queueRuntime.activeTabId);
+    if (activeTabState === "loading" || activeTabState === "missing") {
+      const queueItems = await getQueueItems();
+      const activeIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
+      if (activeIndex >= 0 && isQueueItemActiveStatus(queueItems[activeIndex].status)) {
+        const nextQueueItems = [...queueItems];
+        nextQueueItems[activeIndex] = markQueueItemFailed(
+          queueItems[activeIndex],
+          activeTabState === "loading" ? QUEUE_TAB_LOAD_TIMEOUT_MESSAGE : QUEUE_TAB_CLOSED_MESSAGE
+        );
+        await saveQueueItems(nextQueueItems);
+      }
+
+      const nextRuntime = {
+        ...clearQueueRuntimeActive(queueRuntime),
+        updatedAt: Date.now()
+      };
+      await saveQueueRuntime(nextRuntime);
+    }
+  }
+
+  runQueueEngineSoon("alarm");
+}
+
+async function handleQueueTabUpdated(tabId, changeInfo) {
+  if (changeInfo.status !== "complete") {
+    return;
+  }
+
+  const queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status !== "running") {
+    return;
+  }
+
+  if (!Number.isInteger(queueRuntime.activeTabId) || queueRuntime.activeTabId !== tabId) {
+    return;
+  }
+
+  runQueueEngineSoon("tab-updated");
+}
+
+async function handleQueueTabRemoved(tabId) {
+  const queueRuntime = await getQueueRuntime();
+  if (!Number.isInteger(queueRuntime.activeTabId) || queueRuntime.activeTabId !== tabId) {
+    return;
+  }
+
+  const queueItems = await getQueueItems();
+  const activeIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
+  if (activeIndex >= 0 && isQueueItemActiveStatus(queueItems[activeIndex].status)) {
+    const nextQueueItems = [...queueItems];
+    nextQueueItems[activeIndex] = markQueueItemFailed(queueItems[activeIndex], QUEUE_TAB_CLOSED_MESSAGE);
+    await saveQueueItems(nextQueueItems);
+  }
+
+  const nextRuntime = {
+    ...clearQueueRuntimeActive(queueRuntime),
+    updatedAt: Date.now()
+  };
+  await saveQueueRuntime(nextRuntime);
+
+  if (queueRuntime.status === "running") {
+    runQueueEngineSoon("tab-removed");
+  }
+}
+
+async function recoverQueueEngineState() {
+  const queueRuntime = await getQueueRuntime();
+  if (queueRuntime.status !== "running") {
+    return;
+  }
+
+  runQueueEngineSoon("recover");
+}
+
+async function scheduleQueueAlarm() {
+  try {
+    await chrome.alarms.create(QUEUE_ALARM_NAME, {
+      delayInMinutes: QUEUE_ALARM_DELAY_MINUTES
+    });
+  } catch (error) {
+    console.error("[zotero-archivist] Failed to schedule queue alarm.", error);
+  }
+}
+
+async function clearQueueAlarm() {
+  try {
+    await chrome.alarms.clear(QUEUE_ALARM_NAME);
+  } catch (error) {
+    console.error("[zotero-archivist] Failed to clear queue alarm.", error);
+  }
+}
+
+async function getQueueTabState(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab) {
+      return "missing";
+    }
+
+    return tab.status === "complete" ? "complete" : "loading";
+  } catch (_error) {
+    return "missing";
+  }
 }
 
 async function getSelectorRules() {
@@ -296,6 +763,10 @@ async function ensureQueueItems() {
   await getQueueItems();
 }
 
+async function ensureQueueRuntime() {
+  await getQueueRuntime();
+}
+
 async function getQueueItems() {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.QUEUE_ITEMS);
   const rawQueueItems = stored[STORAGE_KEYS.QUEUE_ITEMS];
@@ -305,12 +776,37 @@ async function getQueueItems() {
     !Array.isArray(rawQueueItems) || JSON.stringify(rawQueueItems) !== JSON.stringify(queueItems);
 
   if (needsWriteBack) {
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.QUEUE_ITEMS]: queueItems
-    });
+    await saveQueueItems(queueItems);
   }
 
   return queueItems;
+}
+
+async function saveQueueItems(queueItems) {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.QUEUE_ITEMS]: queueItems
+  });
+}
+
+async function getQueueRuntime() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.QUEUE_RUNTIME);
+  const rawQueueRuntime = stored[STORAGE_KEYS.QUEUE_RUNTIME];
+  const queueRuntime = normalizeQueueRuntime(rawQueueRuntime);
+
+  const needsWriteBack =
+    !rawQueueRuntime || JSON.stringify(rawQueueRuntime) !== JSON.stringify(queueRuntime);
+
+  if (needsWriteBack) {
+    await saveQueueRuntime(queueRuntime);
+  }
+
+  return queueRuntime;
+}
+
+async function saveQueueRuntime(queueRuntime) {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.QUEUE_RUNTIME]: queueRuntime
+  });
 }
 
 async function getActiveTab() {
@@ -436,11 +932,84 @@ function normalizeQueueItems(input) {
   return normalized;
 }
 
+function normalizeQueueRuntime(input) {
+  const now = Date.now();
+  if (!input || typeof input !== "object") {
+    return {
+      status: "idle",
+      activeQueueItemId: null,
+      activeTabId: null,
+      updatedAt: now
+    };
+  }
+
+  const status =
+    typeof input.status === "string" && QUEUE_RUNTIME_STATUSES.has(input.status)
+      ? input.status
+      : "idle";
+
+  const activeQueueItemId =
+    typeof input.activeQueueItemId === "string" && input.activeQueueItemId.length > 0
+      ? input.activeQueueItemId
+      : null;
+
+  const activeTabId = Number.isInteger(input.activeTabId) ? input.activeTabId : null;
+
+  const updatedAt =
+    Number.isFinite(input.updatedAt) && input.updatedAt > 0 ? Math.trunc(input.updatedAt) : now;
+
+  if (status === "idle") {
+    return {
+      status,
+      activeQueueItemId: null,
+      activeTabId: null,
+      updatedAt
+    };
+  }
+
+  if (activeQueueItemId === null || activeTabId === null) {
+    return {
+      status,
+      activeQueueItemId: null,
+      activeTabId: null,
+      updatedAt
+    };
+  }
+
+  return {
+    status,
+    activeQueueItemId,
+    activeTabId,
+    updatedAt
+  };
+}
+
+function markQueueItemFailed(queueItem, message) {
+  return {
+    ...queueItem,
+    status: "failed",
+    lastError: message,
+    updatedAt: Date.now()
+  };
+}
+
 function createQueueItemId(timestamp, index) {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `queue-${crypto.randomUUID()}`;
   }
   return `queue-${timestamp}-${index}`;
+}
+
+function clearQueueRuntimeActive(queueRuntime) {
+  return {
+    ...queueRuntime,
+    activeQueueItemId: null,
+    activeTabId: null
+  };
+}
+
+function isQueueItemActiveStatus(status) {
+  return QUEUE_ACTIVE_ITEM_STATUSES.has(status);
 }
 
 function isLegacyAnchorOnlyDefault(rules) {

@@ -35,6 +35,6 @@ Last updated: 2026-02-14
 - [x] Phase 1: Build selector management UI.
 - [x] Phase 1: Build link curation controls (select/deselect/filter).
 - [x] Phase 1: Implement queue authoring from selected links.
-- [ ] Phase 2: Implement MV3-safe queue engine with persisted state transitions.
+- [x] Phase 2: Implement MV3-safe queue engine with persisted state transitions.
 - [ ] Phase 3: Implement save providers (manual first, connector bridge behind feature flag).
 - [ ] Phase 4: Add diagnostics, contract tests, and hardening.
