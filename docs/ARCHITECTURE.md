@@ -199,7 +199,7 @@ Current Phase 3 behavior (2026-02-14):
 1. Queue controls (`start`, `pause`, `resume`, `stop`, `retry failed`) are wired in the side panel and background runtime.
 2. `pending -> opening_tab -> saving_snapshot` now routes through provider orchestration in background.
 3. Queue save completion/failure is fully automated; there is no user-confirmation queue state.
-4. Connector bridge is toggle-controlled and health-checked; when unavailable, save attempts fail with explicit diagnostics.
+4. Connector bridge is health-checked; when unavailable, save attempts fail with explicit diagnostics.
 
 ## 9) URL Collection Flow
 
@@ -235,14 +235,13 @@ interface ZoteroSaveProvider {
 
 ## 10.2 Provider order
 
-1. `connector_bridge` (if explicitly enabled and health check passes)
+1. `connector_bridge` (if health check passes)
 
 ## 10.3 Connector bridge provider (advanced)
 
 1. Uses Zotero internal iframe bridge endpoint discovered in analysis.
 2. Sends save command equivalent to connector snapshot action.
 3. Guardrails:
-   - feature flag
    - strict timeout
    - compatibility/version probes
    - fail-closed behavior with explicit diagnostics
@@ -319,7 +318,7 @@ interface ZoteroSaveProvider {
    - queue resilience across service worker restarts
 3. Connector contract tests:
    - bridge health check
-   - snapshot save smoke test against local Zotero connector
+   - optional manual smoke test against local Zotero connector (only when explicitly requested)
    - failure diagnostics when bridge is unavailable
 
 ## 15) Implementation Phases
@@ -343,16 +342,26 @@ interface ZoteroSaveProvider {
 
 ### Phase 3: Save providers
 
-1. Implement `connector_bridge` provider behind feature flag.
+1. Implement `connector_bridge` provider.
 2. Add health checks and explicit failure diagnostics.
 
 ### Phase 4: Hardening
 
 1. Add diagnostics panel.
 2. Add contract tests against installed connector.
-3. Add compatibility kill switch for bridge regressions.
+3. Add hardening tests for runtime routing and storage normalization.
+4. Optional/deferred: compatibility kill switch for bridge regressions (explicit request required).
 
-## 16) MVP Definition (Best-Practice Baseline)
+## 16) Delivery Guardrails
+
+These rules are normative and are intended to prevent unrequested scope creep.
+
+1. Treat `docs/IMPLEMENTATION_STATUS.md` as the execution checklist for implementation work.
+2. Do not implement optional/deferred items unless they are explicitly requested in the current task.
+3. New runtime message types, storage keys, or side-panel controls require explicit user approval unless already listed as in-scope checklist items.
+4. If scope is ambiguous, stop and confirm before implementing.
+
+## 17) MVP Definition (Best-Practice Baseline)
 
 MVP should be considered complete when:
 
