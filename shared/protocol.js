@@ -9,7 +9,6 @@ export const MESSAGE_TYPES = Object.freeze({
   RESUME_QUEUE: "RESUME_QUEUE",
   STOP_QUEUE: "STOP_QUEUE",
   RETRY_FAILED_QUEUE: "RETRY_FAILED_QUEUE",
-  SET_PROVIDER_SETTINGS: "SET_PROVIDER_SETTINGS",
   SET_SELECTOR_RULES: "SET_SELECTOR_RULES",
   RUN_COLLECTOR: "RUN_COLLECTOR"
 });
@@ -19,14 +18,12 @@ export const STORAGE_KEYS = Object.freeze({
   COLLECTED_LINKS: "collectedLinks",
   QUEUE_ITEMS: "queueItems",
   QUEUE_RUNTIME: "queueRuntime",
-  PROVIDER_SETTINGS: "providerSettings",
   PROVIDER_DIAGNOSTICS: "providerDiagnostics"
 });
 
 export const ERROR_CODES = Object.freeze({
   BAD_REQUEST: "BAD_REQUEST",
   INVALID_SELECTOR_RULES: "INVALID_SELECTOR_RULES",
-  INVALID_PROVIDER_SETTINGS: "INVALID_PROVIDER_SETTINGS",
   NO_ACTIVE_TAB: "NO_ACTIVE_TAB",
   UNSUPPORTED_URL: "UNSUPPORTED_URL",
   MISSING_HOST_PERMISSION: "MISSING_HOST_PERMISSION",
@@ -38,10 +35,6 @@ export const ERROR_CODES = Object.freeze({
 
 export const SAVE_PROVIDER_MODES = Object.freeze({
   CONNECTOR_BRIDGE: "connector_bridge"
-});
-
-export const DEFAULT_PROVIDER_SETTINGS = Object.freeze({
-  connectorBridgeEnabled: true
 });
 
 export const DEFAULT_SELECTOR_RULES = Object.freeze([

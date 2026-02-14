@@ -19,6 +19,7 @@ export function createPanelStore(initialFilterQuery = "") {
     providerDiagnostics: createDefaultProviderDiagnostics(),
     resultsFilterQuery: initialFilterQuery,
     persistCollectedLinksQueue: Promise.resolve(),
+    integrationInProgress: false,
     queueAuthoringInProgress: false,
     queueClearingInProgress: false,
     queueLifecycleInProgress: false
@@ -37,6 +38,10 @@ export function createPanelStore(initialFilterQuery = "") {
     );
   }
 
+  function isIntegrationBusy() {
+    return state.integrationInProgress;
+  }
+
   function enqueueCollectedLinksPersist(run) {
     state.persistCollectedLinksQueue = state.persistCollectedLinksQueue.catch(() => false).then(run);
     return state.persistCollectedLinksQueue;
@@ -45,6 +50,7 @@ export function createPanelStore(initialFilterQuery = "") {
   return {
     state,
     enqueueCollectedLinksPersist,
+    isIntegrationBusy,
     isQueueBusy,
     nextRuleId,
     setCollectedLinks(links) {
@@ -54,6 +60,9 @@ export function createPanelStore(initialFilterQuery = "") {
     setProviderDiagnostics(providerDiagnostics) {
       state.providerDiagnostics = normalizeProviderDiagnostics(providerDiagnostics);
       return state.providerDiagnostics;
+    },
+    setIntegrationInProgress(value) {
+      state.integrationInProgress = Boolean(value);
     },
     setQueueAuthoringInProgress(value) {
       state.queueAuthoringInProgress = Boolean(value);

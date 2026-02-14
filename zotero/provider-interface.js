@@ -1,26 +1,10 @@
-import { DEFAULT_PROVIDER_SETTINGS, SAVE_PROVIDER_MODES } from "../shared/protocol.js";
-
-export function normalizeProviderSettings(input) {
-  const defaultEnabled = DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled;
-  if (!input || typeof input !== "object") {
-    return {
-      connectorBridgeEnabled: defaultEnabled
-    };
-  }
-
-  return {
-    connectorBridgeEnabled:
-      typeof input.connectorBridgeEnabled === "boolean"
-        ? input.connectorBridgeEnabled
-        : defaultEnabled
-  };
-}
+import { SAVE_PROVIDER_MODES } from "../shared/protocol.js";
 
 export function createDefaultProviderDiagnostics() {
   return {
     activeMode: SAVE_PROVIDER_MODES.CONNECTOR_BRIDGE,
     connectorBridge: {
-      enabled: DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled,
+      enabled: true,
       healthy: false,
       connectorAvailable: null,
       zoteroOnline: null
@@ -74,19 +58,17 @@ export function createProviderSaveError(error) {
 }
 
 function normalizeConnectorBridgeDiagnostics(input) {
-  const defaultEnabled = DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled;
   if (!input || typeof input !== "object") {
     return {
-      enabled: defaultEnabled,
+      enabled: true,
       healthy: false,
       connectorAvailable: null,
       zoteroOnline: null
     };
   }
 
-  const enabled = typeof input.enabled === "boolean" ? input.enabled : defaultEnabled;
   return {
-    enabled,
+    enabled: true,
     healthy: input.healthy === true,
     connectorAvailable: normalizeNullableBoolean(input.connectorAvailable),
     zoteroOnline: normalizeNullableBoolean(input.zoteroOnline)

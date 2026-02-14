@@ -8,10 +8,7 @@ import {
   normalizeQueueItems,
   normalizeQueueRuntime
 } from "../shared/state.js";
-import {
-  normalizeProviderDiagnostics,
-  normalizeProviderSettings
-} from "../zotero/provider-interface.js";
+import { normalizeProviderDiagnostics } from "../zotero/provider-interface.js";
 
 export async function getCollectedLinks() {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.COLLECTED_LINKS);
@@ -66,32 +63,6 @@ export async function saveSelectorRules(rules) {
 
 export async function ensureSelectorRules() {
   await getSelectorRules();
-}
-
-export async function getProviderSettings() {
-  const stored = await chrome.storage.local.get(STORAGE_KEYS.PROVIDER_SETTINGS);
-  const rawProviderSettings = stored[STORAGE_KEYS.PROVIDER_SETTINGS];
-  const providerSettings = normalizeProviderSettings(rawProviderSettings);
-
-  const needsWriteBack =
-    !rawProviderSettings || JSON.stringify(rawProviderSettings) !== JSON.stringify(providerSettings);
-  if (needsWriteBack) {
-    await saveProviderSettings(providerSettings);
-  }
-
-  return providerSettings;
-}
-
-export async function saveProviderSettings(providerSettings) {
-  const normalized = normalizeProviderSettings(providerSettings);
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.PROVIDER_SETTINGS]: normalized
-  });
-  return normalized;
-}
-
-export async function ensureProviderSettings() {
-  await getProviderSettings();
 }
 
 export async function getProviderDiagnostics() {

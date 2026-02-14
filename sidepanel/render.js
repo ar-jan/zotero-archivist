@@ -151,16 +151,26 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
 
 export function renderIntegrationState({
   providerDiagnosticsState,
+  refreshDiagnosticsButton,
   integrationModeEl,
+  integrationUpdatedAtEl,
   integrationBridgeRowEl,
   integrationBridgeStatusEl,
   integrationConnectorRowEl,
   integrationConnectorStatusEl,
   integrationZoteroRowEl,
   integrationZoteroStatusEl,
-  integrationErrorEl
+  integrationErrorEl,
+  integrationBusy = false
 }) {
   integrationModeEl.textContent = `Mode: ${formatProviderModeLabel(providerDiagnosticsState.activeMode)}`;
+  if (integrationUpdatedAtEl instanceof HTMLElement) {
+    integrationUpdatedAtEl.textContent = formatIntegrationUpdatedAt(providerDiagnosticsState.updatedAt);
+  }
+
+  if (refreshDiagnosticsButton instanceof HTMLButtonElement) {
+    refreshDiagnosticsButton.disabled = integrationBusy;
+  }
 
   const connectorStatus = providerDiagnosticsState.connectorBridge;
   const bridgeState = resolveBridgeDisplayState(connectorStatus);
@@ -391,4 +401,20 @@ function setIntegrationStatusRow(rowEl, valueEl, rowState) {
   rowEl.dataset.state = normalizedState;
   valueEl.textContent =
     typeof rowState?.label === "string" && rowState.label.length > 0 ? rowState.label : "unknown";
+}
+
+function formatIntegrationUpdatedAt(updatedAt) {
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) {
+    return "Last diagnostics check: unknown.";
+  }
+
+  try {
+    const timestamp = new Date(Math.trunc(updatedAt));
+    if (Number.isNaN(timestamp.getTime())) {
+      return "Last diagnostics check: unknown.";
+    }
+    return `Last diagnostics check: ${timestamp.toLocaleString()}.`;
+  } catch (_error) {
+    return "Last diagnostics check: unknown.";
+  }
 }

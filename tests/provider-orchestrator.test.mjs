@@ -2,12 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createProviderOrchestrator } from "../background/provider-orchestrator.js";
-import { installBridgeChromeMock } from "./test-helpers/bridge-chrome-mock.mjs";
 
-test("provider orchestrator resolves no provider when connector bridge is disabled", async () => {
+test("provider orchestrator resolves active provider when health check succeeds", async () => {
   const diagnosticsWrites = [];
   const orchestrator = createProviderOrchestrator({
-    getProviderSettings: async () => ({ connectorBridgeEnabled: false }),
+    createConnectorBridgeProviderImpl: () => ({
+      mode: "connector_bridge",
+      checkHealth: async () => ({
+        ok: true,
+        message: "online",
+        connectorAvailable: true,
+        zoteroOnline: true
+      }),
+      saveWebPageWithSnapshot: async () => ({ ok: true })
+    }),
     saveProviderDiagnostics: async (diagnostics) => {
       diagnosticsWrites.push(diagnostics);
       return diagnostics;
@@ -15,39 +23,6 @@ test("provider orchestrator resolves no provider when connector bridge is disabl
   });
 
   const result = await orchestrator.resolveSaveProvider();
-
-  assert.equal(result.provider, null);
-  assert.equal(result.diagnostics.connectorBridge.enabled, false);
-  assert.equal(result.diagnostics.connectorBridge.healthy, false);
-  assert.equal(result.unavailableReason, null);
-  assert.equal(diagnosticsWrites.length, 1);
-});
-
-test("provider orchestrator resolves connector bridge provider when health check succeeds", async (t) => {
-  const chromeMock = installBridgeChromeMock({
-    executeScriptResponder: async ({ commandName }) => {
-      if (commandName === "Connector.checkIsOnline") {
-        return { ok: true, result: true };
-      }
-      return { ok: false, error: `Unexpected command: ${String(commandName)}` };
-    },
-    permissionsContains: async () => true,
-    tabsById: new Map([
-      [11, { id: 11, url: "https://example.com/health", title: "Health" }]
-    ])
-  });
-  t.after(() => chromeMock.restore());
-
-  const diagnosticsWrites = [];
-  const orchestrator = createProviderOrchestrator({
-    getProviderSettings: async () => ({ connectorBridgeEnabled: true }),
-    saveProviderDiagnostics: async (diagnostics) => {
-      diagnosticsWrites.push(diagnostics);
-      return diagnostics;
-    }
-  });
-
-  const result = await orchestrator.resolveSaveProvider({ tabId: 11 });
 
   assert.equal(result.provider?.mode, "connector_bridge");
   assert.equal(result.diagnostics.connectorBridge.enabled, true);
@@ -57,10 +32,49 @@ test("provider orchestrator resolves connector bridge provider when health check
   assert.equal(diagnosticsWrites.length, 1);
 });
 
-test("provider orchestrator saveQueueItemWithProvider returns disabled message when provider is unavailable", async () => {
+test("provider orchestrator resolves no provider when health check fails", async () => {
   const diagnosticsWrites = [];
   const orchestrator = createProviderOrchestrator({
-    getProviderSettings: async () => ({ connectorBridgeEnabled: false }),
+    createConnectorBridgeProviderImpl: () => ({
+      mode: "connector_bridge",
+      checkHealth: async () => ({
+        ok: false,
+        message: "bridge unavailable",
+        connectorAvailable: false,
+        zoteroOnline: null
+      }),
+      saveWebPageWithSnapshot: async () => ({ ok: true })
+    }),
+    saveProviderDiagnostics: async (diagnostics) => {
+      diagnosticsWrites.push(diagnostics);
+      return diagnostics;
+    },
+  });
+
+  const result = await orchestrator.resolveSaveProvider();
+
+  assert.equal(result.provider, null);
+  assert.equal(result.diagnostics.connectorBridge.enabled, true);
+  assert.equal(result.diagnostics.connectorBridge.healthy, false);
+  assert.equal(result.diagnostics.connectorBridge.connectorAvailable, false);
+  assert.equal(result.diagnostics.connectorBridge.zoteroOnline, null);
+  assert.equal(result.unavailableReason, "bridge unavailable");
+  assert.equal(diagnosticsWrites.length, 1);
+});
+
+test("provider orchestrator saveQueueItemWithProvider returns unavailable message when provider is unhealthy", async () => {
+  const diagnosticsWrites = [];
+  const orchestrator = createProviderOrchestrator({
+    createConnectorBridgeProviderImpl: () => ({
+      mode: "connector_bridge",
+      checkHealth: async () => ({
+        ok: false,
+        message: "probe failed",
+        connectorAvailable: false,
+        zoteroOnline: null
+      }),
+      saveWebPageWithSnapshot: async () => ({ ok: true })
+    }),
     saveProviderDiagnostics: async (diagnostics) => {
       diagnosticsWrites.push(diagnostics);
       return diagnostics;
@@ -73,34 +87,24 @@ test("provider orchestrator saveQueueItemWithProvider returns disabled message w
   });
 
   assert.equal(result.ok, false);
-  assert.equal(result.error, "Connector bridge is disabled.");
-  assert.match(diagnosticsWrites.at(-1).lastError, /disabled/i);
+  assert.match(result.error, /Connector bridge is unavailable\./i);
+  assert.match(result.error, /probe failed/i);
+  assert.match(diagnosticsWrites.at(-1).lastError, /probe failed/i);
 });
 
-test("provider orchestrator saveQueueItemWithProvider reports success and keeps diagnostics clean", async (t) => {
-  const chromeMock = installBridgeChromeMock({
-    executeScriptResponder: async ({ commandName }) => {
-      if (commandName === "Connector.checkIsOnline") {
-        return { ok: true, result: true };
-      }
-      if (commandName === "Connector_Browser.injectTranslationScripts") {
-        return { ok: true, result: true };
-      }
-      if (commandName === "Messaging.sendMessage") {
-        return { ok: true, result: { ok: true } };
-      }
-      return { ok: false, error: `Unexpected command: ${String(commandName)}` };
-    },
-    permissionsContains: async () => true,
-    tabsById: new Map([
-      [12, { id: 12, url: "https://example.com/save", title: "Save" }]
-    ])
-  });
-  t.after(() => chromeMock.restore());
-
+test("provider orchestrator saveQueueItemWithProvider reports success and keeps diagnostics clean", async () => {
   const diagnosticsWrites = [];
   const orchestrator = createProviderOrchestrator({
-    getProviderSettings: async () => ({ connectorBridgeEnabled: true }),
+    createConnectorBridgeProviderImpl: () => ({
+      mode: "connector_bridge",
+      checkHealth: async () => ({
+        ok: true,
+        message: "online",
+        connectorAvailable: true,
+        zoteroOnline: true
+      }),
+      saveWebPageWithSnapshot: async () => ({ ok: true })
+    }),
     saveProviderDiagnostics: async (diagnostics) => {
       diagnosticsWrites.push(diagnostics);
       return diagnostics;
@@ -116,27 +120,19 @@ test("provider orchestrator saveQueueItemWithProvider reports success and keeps 
   assert.equal(diagnosticsWrites.at(-1).lastError, null);
 });
 
-test("provider orchestrator saveQueueItemWithProvider captures provider failure in diagnostics", async (t) => {
-  const chromeMock = installBridgeChromeMock({
-    executeScriptResponder: async ({ commandName }) => {
-      if (commandName === "Connector.checkIsOnline") {
-        return { ok: true, result: false };
-      }
-      if (commandName === "Connector_Browser.injectTranslationScripts") {
-        return { ok: true, result: true };
-      }
-      return { ok: false, error: `Unexpected command: ${String(commandName)}` };
-    },
-    permissionsContains: async () => true,
-    tabsById: new Map([
-      [13, { id: 13, url: "https://example.com/offline", title: "Offline" }]
-    ])
-  });
-  t.after(() => chromeMock.restore());
-
+test("provider orchestrator saveQueueItemWithProvider captures provider failure in diagnostics", async () => {
   const diagnosticsWrites = [];
   const orchestrator = createProviderOrchestrator({
-    getProviderSettings: async () => ({ connectorBridgeEnabled: true }),
+    createConnectorBridgeProviderImpl: () => ({
+      mode: "connector_bridge",
+      checkHealth: async () => ({
+        ok: true,
+        message: "online",
+        connectorAvailable: true,
+        zoteroOnline: true
+      }),
+      saveWebPageWithSnapshot: async () => ({ ok: false, error: "offline" })
+    }),
     saveProviderDiagnostics: async (diagnostics) => {
       diagnosticsWrites.push(diagnostics);
       return diagnostics;

@@ -1,9 +1,6 @@
 import { createConnectorBridgeProvider } from "../zotero/provider-connector-bridge.js";
 
-const CONNECTOR_BRIDGE_DISABLED_MESSAGE = "Connector bridge is disabled.";
-
 export function createProviderOrchestrator({
-  getProviderSettings,
   saveProviderDiagnostics,
   createConnectorBridgeProviderImpl = createConnectorBridgeProvider
 }) {
@@ -71,39 +68,36 @@ export function createProviderOrchestrator({
   }
 
   async function resolveSaveProvider({ tabId = null } = {}) {
-    const providerSettings = await getProviderSettings();
     let activeProvider = null;
     let connectorHealth = null;
     let connectorHealthMessage = null;
 
-    if (providerSettings.connectorBridgeEnabled) {
-      const connectorBridgeProvider = createConnectorBridgeProviderImpl();
-      try {
-        connectorHealth = await connectorBridgeProvider.checkHealth({ tabId });
-      } catch (error) {
-        connectorHealth = {
-          ok: false,
-          message: `Connector bridge health check failed: ${String(error)}`,
-          connectorAvailable: null,
-          zoteroOnline: null
-        };
-      }
+    const connectorBridgeProvider = createConnectorBridgeProviderImpl();
+    try {
+      connectorHealth = await connectorBridgeProvider.checkHealth({ tabId });
+    } catch (error) {
+      connectorHealth = {
+        ok: false,
+        message: `Connector bridge health check failed: ${String(error)}`,
+        connectorAvailable: null,
+        zoteroOnline: null
+      };
+    }
 
-      connectorHealthMessage = normalizeConnectorHealthMessage(
-        connectorHealth?.message,
-        "Connector bridge health check returned no status message."
-      );
+    connectorHealthMessage = normalizeConnectorHealthMessage(
+      connectorHealth?.message,
+      "Connector bridge health check returned no status message."
+    );
 
-      if (connectorHealth.ok === true) {
-        activeProvider = connectorBridgeProvider;
-      }
+    if (connectorHealth.ok === true) {
+      activeProvider = connectorBridgeProvider;
     }
 
     const diagnostics = {
       activeMode: activeProvider?.mode ?? "connector_bridge",
       connectorBridge: {
-        enabled: providerSettings.connectorBridgeEnabled,
-        healthy: providerSettings.connectorBridgeEnabled && connectorHealth?.ok === true,
+        enabled: true,
+        healthy: connectorHealth?.ok === true,
         connectorAvailable:
           connectorHealth?.connectorAvailable === true
             ? true
@@ -151,10 +145,6 @@ function normalizeConnectorHealthMessage(message, fallback) {
 }
 
 function formatConnectorBridgeUnavailableMessage(connectorBridge, reason) {
-  if (!connectorBridge || connectorBridge.enabled !== true) {
-    return CONNECTOR_BRIDGE_DISABLED_MESSAGE;
-  }
-
   const normalizedReason = normalizeConnectorHealthMessage(reason, "");
   if (normalizedReason.length > 0) {
     return `Connector bridge is unavailable. ${normalizedReason}`;

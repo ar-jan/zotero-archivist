@@ -58,6 +58,8 @@ const stopQueueButton = document.getElementById("stop-queue-button");
 const retryFailedQueueButton = document.getElementById("retry-failed-queue-button");
 const rulesSummaryEl = document.getElementById("rules-summary");
 const integrationModeEl = document.getElementById("integration-mode");
+const refreshDiagnosticsButton = document.getElementById("refresh-diagnostics-button");
+const integrationUpdatedAtEl = document.getElementById("integration-updated-at");
 const integrationBridgeRowEl = document.getElementById("integration-bridge-row");
 const integrationBridgeStatusEl = document.getElementById("integration-bridge-status");
 const integrationConnectorRowEl = document.getElementById("integration-connector-row");
@@ -144,6 +146,10 @@ stopQueueButton.addEventListener("click", () => {
 
 retryFailedQueueButton.addEventListener("click", () => {
   void retryFailedQueueItems();
+});
+
+refreshDiagnosticsButton.addEventListener("click", () => {
+  void refreshIntegrationDiagnostics();
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -898,14 +904,17 @@ function renderQueue(queueItems) {
 function renderIntegrationState() {
   renderIntegrationStateView({
     providerDiagnosticsState: panelState.providerDiagnostics,
+    refreshDiagnosticsButton,
     integrationModeEl,
+    integrationUpdatedAtEl,
     integrationBridgeRowEl,
     integrationBridgeStatusEl,
     integrationConnectorRowEl,
     integrationConnectorStatusEl,
     integrationZoteroRowEl,
     integrationZoteroStatusEl,
-    integrationErrorEl
+    integrationErrorEl,
+    integrationBusy: panelStore.isIntegrationBusy()
   });
 }
 
@@ -961,4 +970,26 @@ function messageFromError(error) {
   }
 
   return null;
+}
+
+async function refreshIntegrationDiagnostics() {
+  panelStore.setIntegrationInProgress(true);
+  renderIntegrationState();
+
+  try {
+    const response = await getPanelStateAction();
+    if (!response || response.ok !== true) {
+      setStatus(messageFromError(response?.error) ?? "Failed to refresh integration diagnostics.");
+      return;
+    }
+
+    setProviderDiagnosticsState(response.providerDiagnostics);
+    setStatus("Integration diagnostics refreshed.");
+  } catch (error) {
+    console.error("[zotero-archivist] Failed to refresh integration diagnostics.", error);
+    setStatus("Failed to refresh integration diagnostics.");
+  } finally {
+    panelStore.setIntegrationInProgress(false);
+    renderIntegrationState();
+  }
 }

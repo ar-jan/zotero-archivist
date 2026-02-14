@@ -36,9 +36,9 @@ Last updated: 2026-02-14
 - [x] Phase 1: Build link curation controls (select/deselect/filter).
 - [x] Phase 1: Implement queue authoring from selected links.
 - [x] Phase 2: Implement MV3-safe queue engine with persisted state transitions.
-- [x] Phase 3: Implement save providers (connector bridge behind feature flag).
-  - [x] Provider settings + diagnostics storage added (`providerSettings`, `providerDiagnostics`).
-  - [x] Connector bridge feature flag + health check + failure diagnostics wired.
+- [x] Phase 3: Implement save providers (connector bridge mode).
+  - [x] Provider diagnostics storage added (`providerDiagnostics`).
+  - [x] Connector bridge health check + failure diagnostics wired.
   - [x] Connector bridge snapshot save command wired through Zotero `chromeMessageIframe` service-worker bridge.
 - [ ] Phase 4: Add diagnostics, contract tests, and hardening.
 
@@ -46,7 +46,7 @@ Last updated: 2026-02-14
 
 - Queue save step now uses provider selection instead of hardcoded pause logic.
 - Queue save flow is fully automated; failed saves move items directly to `failed` with details.
-- Added integration section in side panel with connector-bridge toggle and live provider diagnostics.
+- Added integration section in side panel with live provider diagnostics.
 - Connector bridge provider now probes and executes `Connector_Browser.saveAsWebpage(..., { snapshot: true })` via the iframe/port bridge.
 - Bridge failures now fail closed and expose reason details in diagnostics.
 
@@ -78,6 +78,10 @@ Last updated: 2026-02-14
   - `tests/provider-orchestrator.test.mjs` for provider selection and diagnostics propagation.
   - `tests/provider-connector-bridge.test.mjs` for health/save contract semantics.
   - `tests/test-helpers/bridge-chrome-mock.mjs` for deterministic bridge/chrome API mocking.
+- Added integration controls in the side panel:
+  - Manual diagnostics refresh action and last-check timestamp.
+  - Store-level coverage in `tests/panel-store.test.mjs`.
+- Removed dead provider-settings surface (`SET_PROVIDER_SETTINGS`) from runtime protocol/routes.
 
 ## Post-Refactor TODOs
 
@@ -105,11 +109,13 @@ Last updated: 2026-02-14
     - Keep diagnostics visible/actionable in the panel.
     - Add a straightforward runtime disable path for connector bridge regressions.
   - Why: When connector behavior changes, users need clear failure context and a safe fallback switch.
+  - Note: Connector bridge remains the only supported save path, so no user-facing kill switch is exposed.
 
-- [ ] Resolve settings-path mismatch (implement or remove).
+- [x] Resolve settings-path mismatch (implement or remove).
   - Scope:
     - Either wire provider settings controls from panel to `SET_PROVIDER_SETTINGS`, or remove dead surface area until needed.
   - Why: Partially wired paths increase maintenance cost and create confusion about supported configuration.
+  - Note: Removed dead provider-settings surface area (`SET_PROVIDER_SETTINGS`) until an alternative provider exists.
 
 - [ ] Continue splitting sidepanel orchestration into smaller controllers.
   - Scope:

@@ -17,25 +17,21 @@ import { createQueueEngine, QUEUE_ENGINE_ALARM_NAME } from "./queue-engine.js";
 import { createQueueLifecycleHandlers } from "./queue-lifecycle.js";
 import {
   ensureProviderDiagnostics,
-  ensureProviderSettings,
   ensureQueueItems,
   ensureQueueRuntime,
   ensureSelectorRules,
   getCollectedLinks,
-  getProviderSettings,
   getQueueItems,
   getQueueRuntime,
   getSelectorRules,
   saveCollectedLinks,
   saveProviderDiagnostics,
-  saveProviderSettings,
   saveQueueItems,
   saveQueueRuntime,
   saveSelectorRules
 } from "./storage-repo.js";
 
 const providerOrchestrator = createProviderOrchestrator({
-  getProviderSettings,
   saveProviderDiagnostics
 });
 
@@ -67,8 +63,6 @@ const messageHandlers = {
   [MESSAGE_TYPES.RESUME_QUEUE]: async () => queueLifecycleHandlers.resumeQueue(),
   [MESSAGE_TYPES.STOP_QUEUE]: async () => queueLifecycleHandlers.stopQueue(),
   [MESSAGE_TYPES.RETRY_FAILED_QUEUE]: async () => queueLifecycleHandlers.retryFailedQueue(),
-  [MESSAGE_TYPES.SET_PROVIDER_SETTINGS]: async (message) =>
-    setProviderSettings(message.payload?.settings),
   [MESSAGE_TYPES.SET_SELECTOR_RULES]: async (message) => setSelectorRules(message.payload?.rules)
 };
 
@@ -112,7 +106,6 @@ async function initializeExtensionState() {
     ensureSelectorRules(),
     ensureQueueItems(),
     ensureQueueRuntime(),
-    ensureProviderSettings(),
     ensureProviderDiagnostics()
   ]);
   await configureSidePanelBehavior();
@@ -139,7 +132,6 @@ async function getPanelState() {
   const collectedLinks = await getCollectedLinks();
   const queueItems = await getQueueItems();
   const queueRuntime = await getQueueRuntime();
-  const providerSettings = await getProviderSettings();
   const providerDiagnostics = await providerOrchestrator.refreshProviderDiagnostics();
 
   return {
@@ -147,7 +139,6 @@ async function getPanelState() {
     collectedLinks,
     queueItems,
     queueRuntime,
-    providerSettings,
     providerDiagnostics
   };
 }
@@ -270,20 +261,6 @@ async function authorQueueFromSelection(rawLinks) {
     selectedCount: selectedLinks.length,
     addedCount,
     skippedCount
-  });
-}
-
-async function setProviderSettings(rawSettings) {
-  if (!rawSettings || typeof rawSettings !== "object") {
-    return createError(ERROR_CODES.INVALID_PROVIDER_SETTINGS, "Invalid provider settings payload.");
-  }
-
-  const providerSettings = await saveProviderSettings(rawSettings);
-  const providerDiagnostics = await providerOrchestrator.refreshProviderDiagnostics();
-
-  return createSuccess({
-    providerSettings,
-    providerDiagnostics
   });
 }
 

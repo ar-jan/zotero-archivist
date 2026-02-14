@@ -11,7 +11,6 @@ import {
   normalizeQueueItems,
   normalizeQueueRuntime
 } from "../shared/state.js";
-import { normalizeProviderSettings } from "../zotero/provider-interface.js";
 
 test("normalizeCollectedLinks keeps only unique valid http(s) links", () => {
   const links = normalizeCollectedLinks([
@@ -107,12 +106,6 @@ test("getQueueItemCounts aggregates queue state", () => {
     cancelledCount: 1,
     retriableCount: 2
   });
-});
-
-test("normalizeProviderSettings respects connectorBridgeEnabled input", () => {
-  assert.equal(normalizeProviderSettings({ connectorBridgeEnabled: false }).connectorBridgeEnabled, false);
-  assert.equal(normalizeProviderSettings({ connectorBridgeEnabled: true }).connectorBridgeEnabled, true);
-  assert.equal(normalizeProviderSettings({}).connectorBridgeEnabled, true);
 });
 
 test("routeMessage validates payload and dispatches handlers", async () => {
