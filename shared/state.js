@@ -10,10 +10,15 @@ export const QUEUE_ITEM_STATUSES = Object.freeze([
 ]);
 
 export const QUEUE_RUNTIME_STATUSES = Object.freeze(["idle", "running", "paused"]);
+export const DEFAULT_COLLECTOR_SETTINGS = Object.freeze({
+  maxLinksPerRun: 500
+});
 
 const QUEUE_ITEM_STATUS_SET = new Set(QUEUE_ITEM_STATUSES);
 const QUEUE_RUNTIME_STATUS_SET = new Set(QUEUE_RUNTIME_STATUSES);
 const QUEUE_ACTIVE_ITEM_STATUS_SET = new Set(["opening_tab", "saving_snapshot"]);
+const COLLECTOR_MAX_LINKS_MIN = 1;
+const COLLECTOR_MAX_LINKS_MAX = 5000;
 
 export function createDefaultQueueRuntimeState(now = Date.now()) {
   return {
@@ -81,6 +86,17 @@ export function normalizeCollectedLinks(input) {
   }
 
   return normalized;
+}
+
+export function normalizeCollectorSettings(input) {
+  if (!input || typeof input !== "object") {
+    return { ...DEFAULT_COLLECTOR_SETTINGS };
+  }
+
+  const maxLinksPerRun = normalizeCollectorMaxLinks(input.maxLinksPerRun);
+  return {
+    maxLinksPerRun
+  };
 }
 
 export function normalizeQueueStatus(status) {
@@ -236,4 +252,19 @@ export function getQueueItemCounts(queueItems) {
     cancelledCount,
     retriableCount: failedCount + cancelledCount
   };
+}
+
+function normalizeCollectorMaxLinks(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_COLLECTOR_SETTINGS.maxLinksPerRun;
+  }
+
+  const truncated = Math.trunc(value);
+  if (truncated < COLLECTOR_MAX_LINKS_MIN) {
+    return COLLECTOR_MAX_LINKS_MIN;
+  }
+  if (truncated > COLLECTOR_MAX_LINKS_MAX) {
+    return COLLECTOR_MAX_LINKS_MAX;
+  }
+  return truncated;
 }

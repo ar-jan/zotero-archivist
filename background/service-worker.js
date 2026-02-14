@@ -16,10 +16,12 @@ import { createProviderOrchestrator } from "./provider-orchestrator.js";
 import { createQueueEngine, QUEUE_ENGINE_ALARM_NAME } from "./queue-engine.js";
 import { createQueueLifecycleHandlers } from "./queue-lifecycle.js";
 import {
+  ensureCollectorSettings,
   ensureProviderDiagnostics,
   ensureQueueItems,
   ensureQueueRuntime,
   ensureSelectorRules,
+  getCollectorSettings,
   getCollectedLinks,
   getQueueItems,
   getQueueRuntime,
@@ -103,6 +105,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 async function initializeExtensionState() {
   await Promise.all([
+    ensureCollectorSettings(),
     ensureSelectorRules(),
     ensureQueueItems(),
     ensureQueueRuntime(),
@@ -170,6 +173,7 @@ async function collectLinksFromActiveTab() {
   }
 
   const selectorRules = await getSelectorRules();
+  const collectorSettings = await getCollectorSettings();
 
   try {
     await chrome.scripting.executeScript({
@@ -187,7 +191,8 @@ async function collectLinksFromActiveTab() {
     collectorResponse = await chrome.tabs.sendMessage(activeTab.id, {
       type: MESSAGE_TYPES.RUN_COLLECTOR,
       payload: {
-        rules: selectorRules
+        rules: selectorRules,
+        maxLinks: collectorSettings.maxLinksPerRun
       }
     });
   } catch (error) {

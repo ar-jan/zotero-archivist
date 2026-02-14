@@ -5,7 +5,9 @@
   globalThis.__zoteroArchivistCollectorInstalled = true;
 
   const RUN_COLLECTOR = "RUN_COLLECTOR";
-  const MAX_LINKS = 500;
+  const DEFAULT_MAX_LINKS = 500;
+  const MIN_MAX_LINKS = 1;
+  const MAX_MAX_LINKS = 5000;
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== RUN_COLLECTOR) {
@@ -14,7 +16,8 @@
 
     try {
       const rules = Array.isArray(message.payload?.rules) ? message.payload.rules : [];
-      const links = collectLinks(rules);
+      const maxLinks = normalizeMaxLinks(message.payload?.maxLinks);
+      const links = collectLinks(rules, maxLinks);
       sendResponse({ ok: true, links });
     } catch (error) {
       sendResponse({
@@ -28,7 +31,7 @@
     return false;
   });
 
-  function collectLinks(rules) {
+  function collectLinks(rules, maxLinks) {
     const enabledRules = Array.isArray(rules)
       ? rules.filter((rule) => rule && rule.enabled !== false && typeof rule.cssSelector === "string")
       : [];
@@ -51,7 +54,7 @@
       }
 
       for (const element of elements) {
-        if (collected.length >= MAX_LINKS) {
+        if (collected.length >= maxLinks) {
           return collected;
         }
 
@@ -91,6 +94,21 @@
     }
 
     return collected;
+  }
+
+  function normalizeMaxLinks(value) {
+    if (!Number.isFinite(value)) {
+      return DEFAULT_MAX_LINKS;
+    }
+
+    const normalized = Math.trunc(value);
+    if (normalized < MIN_MAX_LINKS) {
+      return MIN_MAX_LINKS;
+    }
+    if (normalized > MAX_MAX_LINKS) {
+      return MAX_MAX_LINKS;
+    }
+    return normalized;
   }
 
   function getRawUrl(element, urlAttribute) {

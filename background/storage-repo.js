@@ -4,6 +4,7 @@ import {
   sanitizeSelectorRules
 } from "../shared/protocol.js";
 import {
+  normalizeCollectorSettings,
   normalizeCollectedLinks,
   normalizeQueueItems,
   normalizeQueueRuntime
@@ -25,6 +26,33 @@ export async function saveCollectedLinks(links) {
     [STORAGE_KEYS.COLLECTED_LINKS]: normalized
   });
   return normalized;
+}
+
+export async function getCollectorSettings() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.COLLECTOR_SETTINGS);
+  const rawCollectorSettings = stored[STORAGE_KEYS.COLLECTOR_SETTINGS];
+  const collectorSettings = normalizeCollectorSettings(rawCollectorSettings);
+
+  const needsWriteBack =
+    !rawCollectorSettings ||
+    JSON.stringify(rawCollectorSettings) !== JSON.stringify(collectorSettings);
+  if (needsWriteBack) {
+    await saveCollectorSettings(collectorSettings);
+  }
+
+  return collectorSettings;
+}
+
+export async function saveCollectorSettings(collectorSettings) {
+  const normalized = normalizeCollectorSettings(collectorSettings);
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.COLLECTOR_SETTINGS]: normalized
+  });
+  return normalized;
+}
+
+export async function ensureCollectorSettings() {
+  await getCollectorSettings();
 }
 
 export async function getSelectorRules() {

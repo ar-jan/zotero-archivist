@@ -48,20 +48,73 @@ export async function ensureHostPermissionAction(tabUrl) {
     return { granted: false };
   }
 
-  const hasPermission = await chrome.permissions.contains({
-    origins: [originPattern]
-  });
-  if (hasPermission) {
-    return { granted: true, alreadyGranted: true, originPattern };
+  const permissionResult = await ensureHostPermissionsForUrlsAction([tabUrl]);
+  return {
+    granted: permissionResult.granted,
+    alreadyGranted: permissionResult.alreadyGranted,
+    originPattern
+  };
+}
+
+export async function ensureHostPermissionsForUrlsAction(urls) {
+  const requestedOrigins = collectOriginPatterns(urls);
+  if (requestedOrigins.length === 0) {
+    return {
+      granted: true,
+      alreadyGranted: true,
+      requestedOrigins: []
+    };
+  }
+
+  const missingOrigins = [];
+  for (const originPattern of requestedOrigins) {
+    const hasPermission = await chrome.permissions.contains({
+      origins: [originPattern]
+    });
+    if (!hasPermission) {
+      missingOrigins.push(originPattern);
+    }
+  }
+
+  if (missingOrigins.length === 0) {
+    return {
+      granted: true,
+      alreadyGranted: true,
+      requestedOrigins: []
+    };
   }
 
   const granted = await chrome.permissions.request({
-    origins: [originPattern]
+    origins: missingOrigins
   });
-  return { granted, alreadyGranted: false, originPattern };
+  return {
+    granted,
+    alreadyGranted: false,
+    requestedOrigins: missingOrigins
+  };
 }
 
 async function sendRuntimeMessage(type, payload = undefined) {
   const message = payload === undefined ? { type } : { type, payload };
   return chrome.runtime.sendMessage(message);
+}
+
+function collectOriginPatterns(urls) {
+  if (!Array.isArray(urls) || urls.length === 0) {
+    return [];
+  }
+
+  const dedupedPatterns = [];
+  const seen = new Set();
+  for (const url of urls) {
+    const originPattern = toOriginPattern(url);
+    if (!originPattern || seen.has(originPattern)) {
+      continue;
+    }
+
+    seen.add(originPattern);
+    dedupedPatterns.push(originPattern);
+  }
+
+  return dedupedPatterns;
 }

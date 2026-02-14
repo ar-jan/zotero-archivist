@@ -3,10 +3,36 @@ import assert from "node:assert/strict";
 
 import { DEFAULT_SELECTOR_RULES, STORAGE_KEYS } from "../shared/protocol.js";
 import {
+  getCollectorSettings,
   getProviderDiagnostics,
   getQueueRuntime,
   getSelectorRules
 } from "../background/storage-repo.js";
+
+test("storage repo initializes collector settings defaults when missing", async (t) => {
+  const chromeMock = installStorageChromeMock();
+  t.after(() => chromeMock.restore());
+
+  const collectorSettings = await getCollectorSettings();
+
+  assert.equal(collectorSettings.maxLinksPerRun, 500);
+  assert.equal(chromeMock.writes.length, 1);
+  assert.equal(Boolean(chromeMock.storageState[STORAGE_KEYS.COLLECTOR_SETTINGS]), true);
+});
+
+test("storage repo normalizes malformed collector settings and writes back", async (t) => {
+  const chromeMock = installStorageChromeMock({
+    [STORAGE_KEYS.COLLECTOR_SETTINGS]: {
+      maxLinksPerRun: -7
+    }
+  });
+  t.after(() => chromeMock.restore());
+
+  const collectorSettings = await getCollectorSettings();
+
+  assert.equal(collectorSettings.maxLinksPerRun, 1);
+  assert.equal(chromeMock.writes.length, 1);
+});
 
 test("storage repo initializes provider diagnostics defaults when missing", async (t) => {
   const chromeMock = installStorageChromeMock();

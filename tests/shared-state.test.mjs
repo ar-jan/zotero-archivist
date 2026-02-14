@@ -7,6 +7,7 @@ import {
   createDefaultQueueRuntimeState,
   getQueueItemCounts,
   markQueueItemFailed,
+  normalizeCollectorSettings,
   normalizeCollectedLinks,
   normalizeQueueItems,
   normalizeQueueRuntime
@@ -25,6 +26,21 @@ test("normalizeCollectedLinks keeps only unique valid http(s) links", () => {
   assert.equal(links[0].url, "https://example.com/a");
   assert.equal(links[1].url, "http://example.com/b");
   assert.equal(links[1].selected, false);
+});
+
+test("normalizeCollectorSettings applies defaults and clamps max links", () => {
+  const defaults = normalizeCollectorSettings(null);
+  assert.equal(defaults.maxLinksPerRun, 500);
+
+  const clampedLow = normalizeCollectorSettings({
+    maxLinksPerRun: 0
+  });
+  assert.equal(clampedLow.maxLinksPerRun, 1);
+
+  const clampedHigh = normalizeCollectorSettings({
+    maxLinksPerRun: 99999
+  });
+  assert.equal(clampedHigh.maxLinksPerRun, 5000);
 });
 
 test("normalizeQueueItems normalizes status and dedupes urls", () => {

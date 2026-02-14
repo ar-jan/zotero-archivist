@@ -20,6 +20,7 @@ test("queue controller starts queue and updates lifecycle status", async () => {
   await harness.controller.startQueueProcessing();
 
   assert.deepEqual(seenMessageTypes, [MESSAGE_TYPES.START_QUEUE]);
+  assert.deepEqual(harness.permissionRequests, [["https://example.com/q1"]]);
   assert.equal(harness.statuses.at(-1), "Queue started.");
   assert.deepEqual(harness.lifecycleBusyChanges, [true, false]);
   assert.equal(harness.queueActionStateUpdates >= 2, true);
@@ -40,6 +41,70 @@ test("queue controller retry status shows retried count", async () => {
   await harness.controller.retryFailedQueueItems();
 
   assert.equal(harness.statuses.at(-1), "Queued 2 item(s) for retry.");
+});
+
+test("queue controller blocks start when queue host permission preflight is denied", async () => {
+  const seenMessageTypes = [];
+  const harness = createHarness({
+    ensureHostPermissionsForUrlsActionImpl: async () => ({
+      granted: false,
+      requestedOrigins: ["https://example.com/*"]
+    }),
+    queueLifecycleActionImpl: async (messageType) => {
+      seenMessageTypes.push(messageType);
+      return {
+        ok: true,
+        queueItems: [],
+        queueRuntime: { status: "running", activeQueueItemId: null }
+      };
+    }
+  });
+
+  await harness.controller.startQueueProcessing();
+
+  assert.deepEqual(seenMessageTypes, []);
+  assert.equal(harness.statuses.at(-1), "Permission was not granted for the queued site.");
+});
+
+test("queue controller preflights resume with pending and active item urls", async () => {
+  const seenMessageTypes = [];
+  const harness = createHarness({
+    initialQueueRuntime: {
+      status: "paused",
+      activeQueueItemId: "q-active"
+    },
+    initialQueueItems: [
+      {
+        id: "q-active",
+        url: "https://example.com/active",
+        status: "saving_snapshot",
+        attempts: 1
+      },
+      {
+        id: "q-pending",
+        url: "https://example.com/pending",
+        status: "pending",
+        attempts: 0
+      }
+    ],
+    queueLifecycleActionImpl: async (messageType) => {
+      seenMessageTypes.push(messageType);
+      return {
+        ok: true,
+        queueItems: [],
+        queueRuntime: { status: "running", activeQueueItemId: "q-active" }
+      };
+    }
+  });
+
+  await harness.controller.resumeQueueProcessing();
+
+  assert.deepEqual(seenMessageTypes, [MESSAGE_TYPES.RESUME_QUEUE]);
+  assert.equal(harness.permissionRequests.length, 1);
+  assert.deepEqual(harness.permissionRequests[0], [
+    "https://example.com/pending",
+    "https://example.com/active"
+  ]);
 });
 
 test("queue controller rejects queue authoring when nothing is selected", async () => {
@@ -96,8 +161,13 @@ test("queue controller surfaces clear-queue error message", async () => {
 
 function createHarness({
   initialCollectedLinks = [{ id: "l1", url: "https://example.com", title: "Example", selected: true }],
-  initialQueueItems = [{ id: "q1", status: "pending", attempts: 0 }],
+  initialQueueItems = [{ id: "q1", url: "https://example.com/q1", status: "pending", attempts: 0 }],
+  initialQueueRuntime = { status: "idle", activeQueueItemId: null, activeTabId: null },
   queueLifecycleActionImpl = async () => ({ ok: true, queueItems: [], queueRuntime: { status: "idle" } }),
+  ensureHostPermissionsForUrlsActionImpl = async () => ({
+    granted: true,
+    requestedOrigins: []
+  }),
   authorQueueFromSelectionActionImpl = async () => ({
     ok: true,
     queueItems: [{ id: "q1", status: "pending", attempts: 0 }],
@@ -112,10 +182,12 @@ function createHarness({
   const clearingBusyChanges = [];
   const queueItemsWrites = [];
   const queueRuntimeWrites = [];
+  const permissionRequests = [];
   let queueActionStateUpdates = 0;
 
   let collectedLinks = initialCollectedLinks;
   let queueItems = initialQueueItems;
+  let queueRuntime = initialQueueRuntime;
 
   const panelStore = {
     setQueueLifecycleInProgress(value) {
@@ -133,7 +205,12 @@ function createHarness({
     panelStore,
     getCollectedLinks: () => collectedLinks,
     getQueueItems: () => queueItems,
+    getQueueRuntime: () => queueRuntime,
     queueLifecycleActionImpl,
+    ensureHostPermissionsForUrlsActionImpl: async (urls) => {
+      permissionRequests.push([...urls]);
+      return ensureHostPermissionsForUrlsActionImpl(urls);
+    },
     authorQueueFromSelectionActionImpl,
     clearQueueActionImpl,
     setQueueItemsState(value) {
@@ -141,6 +218,7 @@ function createHarness({
       queueItemsWrites.push(value);
     },
     setQueueRuntimeState(value) {
+      queueRuntime = value;
       queueRuntimeWrites.push(value);
     },
     updateQueueActionState() {
@@ -165,6 +243,7 @@ function createHarness({
     clearingBusyChanges,
     queueItemsWrites,
     queueRuntimeWrites,
+    permissionRequests,
     get queueActionStateUpdates() {
       return queueActionStateUpdates;
     }

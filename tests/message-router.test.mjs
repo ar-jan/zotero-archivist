@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { routeMessage } from "../background/message-router.js";
+import { MESSAGE_TYPES } from "../shared/protocol.js";
 
 test("message router rejects missing message type", async () => {
   const response = await routeMessage({}, {});
@@ -31,4 +32,48 @@ test("message router delegates to matching handler", async () => {
 
   assert.equal(response.ok, true);
   assert.equal(response.echoedType, "PING");
+});
+
+test("message router rejects payload on payloadless messages", async () => {
+  const response = await routeMessage(
+    {
+      type: MESSAGE_TYPES.GET_PANEL_STATE,
+      payload: {}
+    },
+    {
+      [MESSAGE_TYPES.GET_PANEL_STATE]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(response.ok, false);
+  assert.equal(response.error.code, "BAD_REQUEST");
+  assert.match(response.error.message, /does not accept a payload/i);
+});
+
+test("message router validates array payload contracts", async () => {
+  const invalidResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.SET_COLLECTED_LINKS,
+      payload: {}
+    },
+    {
+      [MESSAGE_TYPES.SET_COLLECTED_LINKS]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(invalidResponse.ok, false);
+  assert.equal(invalidResponse.error.code, "BAD_REQUEST");
+  assert.match(invalidResponse.error.message, /payload\.links/i);
+
+  const validResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.SET_COLLECTED_LINKS,
+      payload: { links: [] }
+    },
+    {
+      [MESSAGE_TYPES.SET_COLLECTED_LINKS]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(validResponse.ok, true);
 });

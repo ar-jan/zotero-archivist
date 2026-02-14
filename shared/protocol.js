@@ -16,6 +16,7 @@ export const MESSAGE_TYPES = Object.freeze({
 export const STORAGE_KEYS = Object.freeze({
   SELECTOR_RULES: "selectorRules",
   COLLECTED_LINKS: "collectedLinks",
+  COLLECTOR_SETTINGS: "collectorSettings",
   QUEUE_ITEMS: "queueItems",
   QUEUE_RUNTIME: "queueRuntime",
   PROVIDER_DIAGNOSTICS: "providerDiagnostics"

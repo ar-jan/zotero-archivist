@@ -27,7 +27,9 @@ export function createQueueController({
   panelStore,
   getCollectedLinks,
   getQueueItems,
+  getQueueRuntime,
   queueLifecycleActionImpl,
+  ensureHostPermissionsForUrlsActionImpl,
   authorQueueFromSelectionActionImpl,
   clearQueueActionImpl,
   setQueueItemsState,
@@ -68,6 +70,12 @@ export function createQueueController({
     updateQueueActionState();
 
     try {
+      const permissionPreflightResult = await ensureQueueHostPermissionsForLifecycleAction(messageType);
+      if (!permissionPreflightResult.ok) {
+        setStatus(permissionPreflightResult.message);
+        return;
+      }
+
       const response = await queueLifecycleActionImpl(messageType);
 
       if (!response || response.ok !== true) {
@@ -102,6 +110,56 @@ export function createQueueController({
       panelStore.setQueueLifecycleInProgress(false);
       updateQueueActionState();
     }
+  }
+
+  async function ensureQueueHostPermissionsForLifecycleAction(messageType) {
+    if (
+      messageType !== MESSAGE_TYPES.START_QUEUE &&
+      messageType !== MESSAGE_TYPES.RESUME_QUEUE
+    ) {
+      return { ok: true };
+    }
+
+    if (typeof ensureHostPermissionsForUrlsActionImpl !== "function") {
+      return { ok: true };
+    }
+
+    const permissionCandidateUrls = getQueuePermissionCandidateUrls({
+      queueItems: getQueueItems(),
+      queueRuntime: typeof getQueueRuntime === "function" ? getQueueRuntime() : null
+    });
+
+    if (permissionCandidateUrls.length === 0) {
+      return { ok: true };
+    }
+
+    setStatus("Checking host permissions for queued links...");
+
+    let permissionResult;
+    try {
+      permissionResult = await ensureHostPermissionsForUrlsActionImpl(permissionCandidateUrls);
+    } catch (_error) {
+      return {
+        ok: false,
+        message: "Failed to verify host permissions for queued links."
+      };
+    }
+
+    if (permissionResult?.granted === true) {
+      return { ok: true };
+    }
+
+    const requestedOriginsCount = Array.isArray(permissionResult?.requestedOrigins)
+      ? permissionResult.requestedOrigins.length
+      : 0;
+
+    return {
+      ok: false,
+      message:
+        requestedOriginsCount > 1
+          ? "Permission was not granted for one or more queued sites."
+          : "Permission was not granted for the queued site."
+    };
   }
 
   async function addSelectedLinksToQueue() {
@@ -197,4 +255,45 @@ function resolveErrorMessage(error, messageFromError) {
   }
 
   return messageFromError(error);
+}
+
+function getQueuePermissionCandidateUrls({ queueItems, queueRuntime }) {
+  if (!Array.isArray(queueItems) || queueItems.length === 0) {
+    return [];
+  }
+
+  const candidateUrls = [];
+  const seenUrls = new Set();
+  for (const queueItem of queueItems) {
+    if (!queueItem || queueItem.status !== "pending" || typeof queueItem.url !== "string") {
+      continue;
+    }
+
+    const normalizedUrl = queueItem.url.trim();
+    if (normalizedUrl.length === 0) {
+      continue;
+    }
+
+    const dedupeKey = normalizedUrl.toLowerCase();
+    if (seenUrls.has(dedupeKey)) {
+      continue;
+    }
+
+    seenUrls.add(dedupeKey);
+    candidateUrls.push(normalizedUrl);
+  }
+
+  if (typeof queueRuntime?.activeQueueItemId === "string" && queueRuntime.activeQueueItemId.length > 0) {
+    const activeQueueItem = queueItems.find((item) => item.id === queueRuntime.activeQueueItemId);
+    if (activeQueueItem && typeof activeQueueItem.url === "string") {
+      const activeUrl = activeQueueItem.url.trim();
+      const dedupeKey = activeUrl.toLowerCase();
+      if (activeUrl.length > 0 && !seenUrls.has(dedupeKey)) {
+        seenUrls.add(dedupeKey);
+        candidateUrls.push(activeUrl);
+      }
+    }
+  }
+
+  return candidateUrls;
 }

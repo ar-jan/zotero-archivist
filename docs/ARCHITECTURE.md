@@ -64,12 +64,15 @@
    - Injected only when collecting links
    - Evaluates selector rules and returns normalized candidates
 
-4. `zotero/providers/*`
-   - `connectorBridgeProvider` (default provider)
+4. `zotero/`
+   - `provider-interface.js` shared provider contracts + diagnostics normalization
+   - `provider-connector-bridge.js` (default provider)
 
 5. `shared/protocol.js`
-   - Message contracts between sidepanel, background, and content scripts
-   - Runtime schema validation
+   - Message types, storage keys, and normalization helpers for runtime contracts
+
+6. `background/message-router.js`
+   - Runtime message boundary checks for type + payload shape before handler dispatch
 
 ## 5.2 Recommended structure
 
@@ -79,6 +82,7 @@ zotero-archivist/
 ├── background/
 │   ├── service-worker.js
 │   ├── message-router.js
+│   ├── queue-lifecycle.js
 │   ├── storage-repo.js
 │   ├── provider-orchestrator.js
 │   └── queue-engine.js
@@ -88,7 +92,10 @@ zotero-archivist/
 │   ├── panel.js
 │   ├── store.js
 │   ├── actions.js
-│   └── render.js
+│   ├── render.js
+│   ├── queue-controller.js
+│   ├── selector-controller.js
+│   └── link-curation-controller.js
 ├── content/
 │   └── collector.js
 ├── zotero/
@@ -98,7 +105,7 @@ zotero-archivist/
 │   ├── protocol.js
 │   └── state.js
 └── docs/
-    └── integration-notes.md
+    └── ARCHITECTURE.md
 ```
 
 ## 6) Permission and Manifest Best Practices
@@ -118,11 +125,11 @@ zotero-archivist/
    - `tabs`
    - `scripting`
    - `sidePanel`
-2. Optional:
-   - `management` only if connector discovery by extension id is implemented
+2. Optional (deferred in current implementation):
+   - `management` is not used; connector availability is inferred via bridge probe behavior
 3. Host permissions:
    - prefer `optional_host_permissions`: `https://*/*`, `http://*/*`
-   - request at runtime when user starts collection/queue, not at install
+   - request at runtime when user starts collection or starts/resumes queue processing, not at install
 
 ## 6.3 What to avoid
 
@@ -150,6 +157,10 @@ type LinkCandidate = {
   sourceSelectorId: string;
   selected: boolean;
   dedupeKey: string;
+};
+
+type CollectorSettings = {
+  maxLinksPerRun: number; // default 500, clamped to [1, 5000]
 };
 
 type QueueItemStatus =
@@ -180,7 +191,7 @@ Use a deterministic state machine with persisted checkpoints.
 
 1. Store durable queue state in `chrome.storage.local`.
 2. Store queue runtime pointers (`status`, `activeQueueItemId`, `activeTabId`) in `chrome.storage.local` for restart safety.
-3. Optionally mirror transient execution pointers to `chrome.storage.session` in future as a non-authoritative cache.
+3. `chrome.storage.session` mirrors are not currently used.
 4. Use event-driven progression:
    - `tabs.onUpdated` for load-complete
    - `tabs.onRemoved` for unexpected queue tab closure
@@ -193,6 +204,7 @@ State transitions:
 1. `pending -> opening_tab -> saving_snapshot -> archived`
 2. `saving_snapshot -> failed` on provider or bridge errors
 3. Any active state -> `failed` on terminal error/timeout
+4. Any active state -> `cancelled` when operator stops queue
 
 Current Phase 3 behavior (2026-02-14):
 
@@ -200,6 +212,7 @@ Current Phase 3 behavior (2026-02-14):
 2. `pending -> opening_tab -> saving_snapshot` now routes through provider orchestration in background.
 3. Queue save completion/failure is fully automated; there is no user-confirmation queue state.
 4. Connector bridge is health-checked; when unavailable, save attempts fail with explicit diagnostics.
+5. Queue `start`/`resume` performs host-permission preflight for queued origins before lifecycle dispatch.
 
 ## 9) URL Collection Flow
 
@@ -213,7 +226,7 @@ Collector best practices:
 
 1. Enforce protocol allowlist (`http`, `https`).
 2. Resolve relative URLs against `document.baseURI`.
-3. Cap max collected links per run (configurable safety limit).
+3. Cap max collected links per run via `collectorSettings.maxLinksPerRun` (default `500`, clamped to `[1, 5000]`).
 4. Return metadata only; no unnecessary DOM capture.
 
 ## 10) Zotero Save Provider Strategy
@@ -225,7 +238,12 @@ Treat Zotero save path as a pluggable provider with capability checks.
 ```ts
 interface ZoteroSaveProvider {
   mode: SaveProviderMode;
-  checkHealth(): Promise<{ ok: boolean; details?: string }>;
+  checkHealth(input?: { tabId?: number }): Promise<{
+    ok: boolean;
+    message: string;
+    connectorAvailable: boolean | null;
+    zoteroOnline: boolean | null;
+  }>;
   saveWebPageWithSnapshot(input: { tabId: number; url: string; title?: string }): Promise<{
     ok: boolean;
     error?: string;
@@ -260,6 +278,11 @@ interface ZoteroSaveProvider {
 2. Errors are surfaced in queue item `lastError` and provider diagnostics.
 3. Retry flow requeues failed/cancelled items after operator action.
 
+## 10.6 Diagnostics probe preconditions
+
+1. When no queue tab id is supplied, connector health probes require at least one open `http(s)` tab with granted host permission.
+2. If no eligible tab is available, diagnostics report a probe-precondition error rather than a connector-state verdict.
+
 ## 11) Side Panel UX Plan
 
 1. Sections:
@@ -285,72 +308,69 @@ interface ZoteroSaveProvider {
 
 ## 12) Storage Plan
 
-1. `chrome.storage.sync`:
-   - selector rules
-   - UI preferences
-   - safe non-sensitive defaults
-2. `chrome.storage.local`:
-   - queue items
-   - queue runtime state (`queueRuntime`)
-   - queue history
-   - provider diagnostics
+1. `chrome.storage.local`:
+   - selector rules (`selectorRules`)
+   - collected links (`collectedLinks`)
+   - collector settings (`collectorSettings`)
+   - queue items (`queueItems`)
+   - queue runtime (`queueRuntime`)
+   - provider diagnostics (`providerDiagnostics`)
+2. `chrome.storage.sync`:
+   - not currently used
 3. `chrome.storage.session`:
-   - optional future mirror of current run pointer
-   - in-progress tab IDs
-   - temporary retries
+   - not currently used
 
 ## 13) Security and Privacy
 
 1. No remote code execution or dynamic script URLs.
-2. Validate all inbound/outbound message payloads.
+2. Validate inbound runtime message payload shape at routing boundaries and normalize persisted state payloads.
 3. Do not persist full page content in archivist storage.
 4. Minimize retained data (URLs/titles/status only).
 5. Redact sensitive query params in logs/UI where appropriate.
 
 ## 14) Testing Strategy
 
-1. Unit tests:
-   - selector filtering and URL normalization
-   - queue state transitions
-   - provider availability routing
-2. Integration tests (extension-level):
-   - side panel to collector roundtrip
-   - queue resilience across service worker restarts
-3. Connector contract tests:
-   - bridge health check
+1. Automated module tests (`node:test`):
+   - selector/filtering and URL normalization
+   - message-router contract checks
+   - queue lifecycle + queue engine state transitions
+   - provider orchestration and connector bridge behaviors via mocks
+   - storage normalization and sidepanel controllers/store
+2. Extension-level validation:
+   - manual load-unpacked workflow checks in Chromium (collection, queue controls, diagnostics)
+3. Connector contract checks:
+   - mocked bridge health/save coverage in automated tests
    - optional manual smoke test against local Zotero connector (only when explicitly requested)
-   - failure diagnostics when bridge is unavailable
 
-## 15) Implementation Phases
+## 15) Implementation Phases (Current Status)
 
-### Phase 0: Foundation choices
+### Phase 0: Foundation choices (completed)
 
 1. Scaffold MV3 + sidePanel + typed message protocol.
 2. Implement storage abstractions and queue state reducer.
 
-### Phase 1: Link collection workflow
+### Phase 1: Link collection workflow (completed)
 
 1. Build selector UI.
 2. Implement on-demand collector injection.
 3. Implement selection and queue authoring.
 
-### Phase 2: Queue engine
+### Phase 2: Queue engine (completed)
 
 1. Implement tab lifecycle controller.
 2. Implement pause/resume/stop/retry and recovery logic.
 3. Add alarm-based watchdog handling.
 
-### Phase 3: Save providers
+### Phase 3: Save providers (completed)
 
 1. Implement `connector_bridge` provider.
 2. Add health checks and explicit failure diagnostics.
 
-### Phase 4: Hardening
+### Phase 4: Hardening (partially complete)
 
-1. Add diagnostics panel.
-2. Add contract tests against installed connector.
-3. Add hardening tests for runtime routing and storage normalization.
-4. Optional/deferred: compatibility kill switch for bridge regressions (explicit request required).
+1. Diagnostics panel and provider-status refresh controls are implemented.
+2. Runtime routing/storage normalization tests are implemented at module level.
+3. Contract tests against a live installed connector remain manual/optional.
 
 ## 16) Delivery Guardrails
 
