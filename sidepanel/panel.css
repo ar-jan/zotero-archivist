@@ -243,7 +243,7 @@ body {
   gap: 8px;
   list-style: none;
   margin: 0;
-  max-height: calc(100vh - 260px);
+  max-height: 220px;
   overflow: auto;
   padding: 0;
 }
@@ -293,4 +293,144 @@ body {
 .result-empty {
   color: #666;
   font-size: 0.82rem;
+}
+
+.queue {
+  border-top: 1px solid #ddd;
+  padding-top: 10px;
+}
+
+.queue-header {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.queue h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.queue-summary {
+  color: #666;
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.queue-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+#add-selected-to-queue-button,
+#clear-queue-button {
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+}
+
+#add-selected-to-queue-button {
+  border: 1px solid #0a66c2;
+  background: #0a66c2;
+  color: #fff;
+}
+
+#clear-queue-button {
+  border: 1px solid #888;
+  background: #fff;
+  color: #333;
+}
+
+#add-selected-to-queue-button[disabled],
+#clear-queue-button[disabled] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 0;
+}
+
+.queue-item {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+}
+
+.queue-item-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.queue-link {
+  color: #0a66c2;
+  flex: 1;
+  font-size: 0.88rem;
+  min-width: 0;
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.queue-link:hover {
+  text-decoration: underline;
+}
+
+.queue-status {
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.queue-status-pending {
+  background: #e8f2ff;
+  color: #0a4c8a;
+}
+
+.queue-status-archived {
+  background: #e7f7ed;
+  color: #1d6d3f;
+}
+
+.queue-status-failed,
+.queue-status-cancelled {
+  background: #fdecec;
+  color: #8c1d1d;
+}
+
+.queue-status-opening_tab,
+.queue-status-saving_snapshot,
+.queue-status-manual_required {
+  background: #fff5dd;
+  color: #7a4e0a;
+}
+
+.queue-item-meta {
+  color: #666;
+  font-size: 0.76rem;
+}
+
+.queue-empty {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  color: #666;
+  font-size: 0.82rem;
+  padding: 8px;
 }

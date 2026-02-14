@@ -50,6 +50,18 @@
         </div>
         <ul id="results-list" class="results-list"></ul>
       </section>
+
+      <section class="queue" aria-live="polite">
+        <div class="queue-header">
+          <h2 id="queue-title">Queue (0)</h2>
+          <p id="queue-summary" class="queue-summary"></p>
+        </div>
+        <div class="queue-controls">
+          <button id="add-selected-to-queue-button" type="button">Add Selected to Queue</button>
+          <button id="clear-queue-button" type="button">Clear Queue</button>
+        </div>
+        <ul id="queue-list" class="queue-list"></ul>
+      </section>
     </main>
 
     <script type="module" src="panel.js"></script>

@@ -17,13 +17,21 @@ const selectAllLinksButton = document.getElementById("select-all-links-button");
 const clearAllLinksButton = document.getElementById("clear-all-links-button");
 const invertLinksButton = document.getElementById("invert-links-button");
 const resultsFilterInput = document.getElementById("results-filter-input");
+const queueTitleEl = document.getElementById("queue-title");
+const queueSummaryEl = document.getElementById("queue-summary");
+const queueListEl = document.getElementById("queue-list");
+const addSelectedToQueueButton = document.getElementById("add-selected-to-queue-button");
+const clearQueueButton = document.getElementById("clear-queue-button");
 const rulesSummaryEl = document.getElementById("rules-summary");
 
 let selectorRulesDirty = false;
 let selectorRuleCounter = 0;
 let collectedLinksState = [];
+let queueItemsState = [];
 let resultsFilterQuery = normalizeFilterQuery(resultsFilterInput.value);
 let persistCollectedLinksQueue = Promise.resolve();
+let queueAuthoringInProgress = false;
+let queueClearingInProgress = false;
 
 collectButton.addEventListener("click", () => {
   void collectLinks();
@@ -70,6 +78,14 @@ resultsFilterInput.addEventListener("input", () => {
   renderLinks(collectedLinksState);
 });
 
+addSelectedToQueueButton.addEventListener("click", () => {
+  void addSelectedLinksToQueue();
+});
+
+clearQueueButton.addEventListener("click", () => {
+  void clearQueueItems();
+});
+
 void loadPanelState();
 
 async function loadPanelState() {
@@ -86,9 +102,11 @@ async function loadPanelState() {
 
   const selectorRules = normalizeSelectorRules(response.selectorRules);
   const collectedLinks = normalizeCollectedLinks(response.collectedLinks);
+  const queueItems = normalizeQueueItems(response.queueItems);
 
   renderSelectorRules(selectorRules);
   setCollectedLinksState(collectedLinks);
+  setQueueItemsState(queueItems);
   setSelectorRulesDirty(false);
   setStatus("Ready.");
 }
@@ -477,6 +495,88 @@ function setCollectedLinksState(links) {
   renderLinks(collectedLinksState);
 }
 
+function setQueueItemsState(queueItems) {
+  queueItemsState = normalizeQueueItems(queueItems);
+  renderQueue(queueItemsState);
+}
+
+async function addSelectedLinksToQueue() {
+  const selectedLinks = collectedLinksState.filter((link) => link.selected !== false);
+  if (selectedLinks.length === 0) {
+    setStatus("Select at least one link to add to queue.");
+    return;
+  }
+
+  queueAuthoringInProgress = true;
+  updateQueueActionState();
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.AUTHOR_QUEUE_FROM_SELECTION,
+      payload: {
+        links: selectedLinks
+      }
+    });
+
+    if (!response || response.ok !== true) {
+      setStatus(messageFromError(response?.error) ?? "Failed to add selected links to queue.");
+      return;
+    }
+
+    setQueueItemsState(response.queueItems);
+    const addedCount = Number.isFinite(response.addedCount) ? response.addedCount : 0;
+    const skippedCount = Number.isFinite(response.skippedCount) ? response.skippedCount : 0;
+
+    if (addedCount === 0 && skippedCount > 0) {
+      setStatus("Selected links are already in queue.");
+      return;
+    }
+
+    if (skippedCount > 0) {
+      setStatus(`Added ${addedCount} link(s) to queue (${skippedCount} already queued).`);
+      return;
+    }
+
+    setStatus(`Added ${addedCount} link(s) to queue.`);
+  } catch (error) {
+    console.error("[zotero-archivist] Failed to add selected links to queue.", error);
+    setStatus("Failed to add selected links to queue.");
+  } finally {
+    queueAuthoringInProgress = false;
+    updateQueueActionState();
+  }
+}
+
+async function clearQueueItems() {
+  if (queueItemsState.length === 0) {
+    setStatus("Queue is already empty.");
+    return;
+  }
+
+  queueClearingInProgress = true;
+  updateQueueActionState();
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.CLEAR_QUEUE
+    });
+
+    if (!response || response.ok !== true) {
+      setStatus(messageFromError(response?.error) ?? "Failed to clear queue.");
+      return;
+    }
+
+    setQueueItemsState(response.queueItems);
+    setStatus("Cleared queue.");
+  } catch (error) {
+    console.error("[zotero-archivist] Failed to clear queue.", error);
+    setStatus("Failed to clear queue.");
+  } finally {
+    queueClearingInProgress = false;
+    updateQueueActionState();
+  }
+}
+
 async function handleResultsListChange(event) {
   if (!(event.target instanceof HTMLInputElement)) {
     return;
@@ -683,6 +783,50 @@ function renderLinks(links) {
   }
 }
 
+function renderQueue(queueItems) {
+  const safeQueueItems = Array.isArray(queueItems) ? queueItems : [];
+
+  queueTitleEl.textContent = `Queue (${safeQueueItems.length})`;
+  queueSummaryEl.textContent = summarizeQueueCounts(safeQueueItems);
+  updateQueueActionState();
+
+  queueListEl.textContent = "";
+  if (safeQueueItems.length === 0) {
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "queue-empty";
+    emptyItem.textContent = "Queue is empty.";
+    queueListEl.append(emptyItem);
+    return;
+  }
+
+  for (const queueItem of safeQueueItems) {
+    const item = document.createElement("li");
+    item.className = "queue-item";
+
+    const row = document.createElement("div");
+    row.className = "queue-item-row";
+
+    const link = document.createElement("a");
+    link.className = "queue-link";
+    link.href = queueItem.url;
+    link.target = "_blank";
+    link.rel = "noreferrer noopener";
+    link.textContent = queueItem.title;
+
+    const statusBadge = document.createElement("span");
+    statusBadge.className = `queue-status queue-status-${queueItem.status}`;
+    statusBadge.textContent = formatQueueStatusLabel(queueItem.status);
+
+    const meta = document.createElement("div");
+    meta.className = "queue-item-meta";
+    meta.textContent = `Attempts: ${queueItem.attempts}`;
+
+    row.append(link, statusBadge);
+    item.append(row, meta);
+    queueListEl.append(item);
+  }
+}
+
 function updateResultsSummary({ selectedCount, totalCount, filteredCount }) {
   const summaryParts = [`${selectedCount} selected`];
   if (resultsFilterQuery.length > 0) {
@@ -698,6 +842,14 @@ function updateResultsControlState({ totalCount, filteredCount }) {
   selectAllLinksButton.disabled = !hasFilteredLinks;
   clearAllLinksButton.disabled = !hasFilteredLinks;
   invertLinksButton.disabled = !hasFilteredLinks;
+  updateQueueActionState();
+}
+
+function updateQueueActionState() {
+  const selectedCount = collectedLinksState.filter((link) => link.selected !== false).length;
+  const queueBusy = queueAuthoringInProgress || queueClearingInProgress;
+  addSelectedToQueueButton.disabled = queueBusy || selectedCount === 0;
+  clearQueueButton.disabled = queueBusy || queueItemsState.length === 0;
 }
 
 function createResultMessageItem(message) {
@@ -776,6 +928,104 @@ function normalizeCollectedLinks(input) {
   }
 
   return normalized;
+}
+
+function normalizeQueueItems(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const normalized = [];
+  const seenUrls = new Set();
+  for (const candidate of input) {
+    if (!candidate || typeof candidate !== "object" || typeof candidate.url !== "string") {
+      continue;
+    }
+
+    if (!isHttpUrl(candidate.url)) {
+      continue;
+    }
+
+    const url = new URL(candidate.url).toString();
+    const dedupeKey = url.toLowerCase();
+    if (seenUrls.has(dedupeKey)) {
+      continue;
+    }
+    seenUrls.add(dedupeKey);
+
+    const status = normalizeQueueStatus(candidate.status);
+    const queueItem = {
+      id:
+        typeof candidate.id === "string" && candidate.id.trim().length > 0
+          ? candidate.id.trim()
+          : `queue-${normalized.length + 1}`,
+      url,
+      title:
+        typeof candidate.title === "string" && candidate.title.trim().length > 0
+          ? candidate.title.trim()
+          : url,
+      status,
+      attempts:
+        Number.isFinite(candidate.attempts) && candidate.attempts >= 0
+          ? Math.trunc(candidate.attempts)
+          : 0,
+      createdAt:
+        Number.isFinite(candidate.createdAt) && candidate.createdAt > 0
+          ? Math.trunc(candidate.createdAt)
+          : Date.now(),
+      updatedAt:
+        Number.isFinite(candidate.updatedAt) && candidate.updatedAt > 0
+          ? Math.trunc(candidate.updatedAt)
+          : Date.now()
+    };
+
+    if (typeof candidate.lastError === "string" && candidate.lastError.trim().length > 0) {
+      queueItem.lastError = candidate.lastError.trim();
+    }
+
+    normalized.push(queueItem);
+  }
+
+  return normalized;
+}
+
+function normalizeQueueStatus(status) {
+  switch (status) {
+    case "pending":
+    case "opening_tab":
+    case "saving_snapshot":
+    case "archived":
+    case "manual_required":
+    case "failed":
+    case "cancelled":
+      return status;
+    default:
+      return "pending";
+  }
+}
+
+function summarizeQueueCounts(queueItems) {
+  if (!Array.isArray(queueItems) || queueItems.length === 0) {
+    return "0 pending";
+  }
+
+  const pendingCount = queueItems.filter((item) => item.status === "pending").length;
+  const archivedCount = queueItems.filter((item) => item.status === "archived").length;
+  const failedCount = queueItems.filter((item) => item.status === "failed").length;
+
+  const summaryParts = [`${pendingCount} pending`];
+  if (archivedCount > 0) {
+    summaryParts.push(`${archivedCount} archived`);
+  }
+  if (failedCount > 0) {
+    summaryParts.push(`${failedCount} failed`);
+  }
+
+  return summaryParts.join(" • ");
+}
+
+function formatQueueStatusLabel(status) {
+  return status.replaceAll("_", " ");
 }
 
 function setStatus(message) {
