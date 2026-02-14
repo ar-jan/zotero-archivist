@@ -201,7 +201,11 @@ async function collectLinksFromActiveTab() {
       type: MESSAGE_TYPES.RUN_COLLECTOR,
       payload: {
         rules: selectorRules,
-        maxLinks: collectorSettings.maxLinksPerRun
+        maxLinks: collectorSettings.maxLinksPerRun,
+        autoScrollEnabled: collectorSettings.autoScrollEnabled,
+        autoScrollMaxRounds: collectorSettings.autoScrollMaxRounds,
+        autoScrollIdleRounds: collectorSettings.autoScrollIdleRounds,
+        autoScrollSettleDelayMs: collectorSettings.autoScrollSettleDelayMs
       }
     });
   } catch (error) {

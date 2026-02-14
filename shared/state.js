@@ -11,7 +11,11 @@ export const QUEUE_ITEM_STATUSES = Object.freeze([
 
 export const QUEUE_RUNTIME_STATUSES = Object.freeze(["idle", "running", "paused"]);
 export const DEFAULT_COLLECTOR_SETTINGS = Object.freeze({
-  maxLinksPerRun: 500
+  maxLinksPerRun: 500,
+  autoScrollEnabled: true,
+  autoScrollMaxRounds: 30,
+  autoScrollIdleRounds: 3,
+  autoScrollSettleDelayMs: 750
 });
 export const DEFAULT_QUEUE_SETTINGS = Object.freeze({
   interItemDelayMs: 5000,
@@ -23,6 +27,12 @@ const QUEUE_RUNTIME_STATUS_SET = new Set(QUEUE_RUNTIME_STATUSES);
 const QUEUE_ACTIVE_ITEM_STATUS_SET = new Set(["opening_tab", "saving_snapshot"]);
 const COLLECTOR_MAX_LINKS_MIN = 1;
 const COLLECTOR_MAX_LINKS_MAX = 5000;
+const COLLECTOR_AUTO_SCROLL_MAX_ROUNDS_MIN = 1;
+const COLLECTOR_AUTO_SCROLL_MAX_ROUNDS_MAX = 200;
+const COLLECTOR_AUTO_SCROLL_IDLE_ROUNDS_MIN = 1;
+const COLLECTOR_AUTO_SCROLL_IDLE_ROUNDS_MAX = 20;
+const COLLECTOR_AUTO_SCROLL_SETTLE_DELAY_MIN_MS = 100;
+const COLLECTOR_AUTO_SCROLL_SETTLE_DELAY_MAX_MS = 10000;
 const QUEUE_INTER_ITEM_DELAY_MIN_MS = 0;
 const QUEUE_INTER_ITEM_DELAY_MAX_MS = 600000;
 const QUEUE_INTER_ITEM_JITTER_MIN_MS = 0;
@@ -103,8 +113,18 @@ export function normalizeCollectorSettings(input) {
   }
 
   const maxLinksPerRun = normalizeCollectorMaxLinks(input.maxLinksPerRun);
+  const autoScrollEnabled = normalizeCollectorAutoScrollEnabled(input.autoScrollEnabled);
+  const autoScrollMaxRounds = normalizeCollectorAutoScrollMaxRounds(input.autoScrollMaxRounds);
+  const autoScrollIdleRounds = normalizeCollectorAutoScrollIdleRounds(input.autoScrollIdleRounds);
+  const autoScrollSettleDelayMs = normalizeCollectorAutoScrollSettleDelayMs(
+    input.autoScrollSettleDelayMs
+  );
   return {
-    maxLinksPerRun
+    maxLinksPerRun,
+    autoScrollEnabled,
+    autoScrollMaxRounds,
+    autoScrollIdleRounds,
+    autoScrollSettleDelayMs
   };
 }
 
@@ -302,6 +322,61 @@ function normalizeCollectorMaxLinks(value) {
   }
   if (truncated > COLLECTOR_MAX_LINKS_MAX) {
     return COLLECTOR_MAX_LINKS_MAX;
+  }
+  return truncated;
+}
+
+function normalizeCollectorAutoScrollEnabled(value) {
+  if (value === true) {
+    return true;
+  }
+  if (value === false) {
+    return false;
+  }
+  return DEFAULT_COLLECTOR_SETTINGS.autoScrollEnabled;
+}
+
+function normalizeCollectorAutoScrollMaxRounds(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_COLLECTOR_SETTINGS.autoScrollMaxRounds;
+  }
+
+  const truncated = Math.trunc(value);
+  if (truncated < COLLECTOR_AUTO_SCROLL_MAX_ROUNDS_MIN) {
+    return COLLECTOR_AUTO_SCROLL_MAX_ROUNDS_MIN;
+  }
+  if (truncated > COLLECTOR_AUTO_SCROLL_MAX_ROUNDS_MAX) {
+    return COLLECTOR_AUTO_SCROLL_MAX_ROUNDS_MAX;
+  }
+  return truncated;
+}
+
+function normalizeCollectorAutoScrollIdleRounds(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_COLLECTOR_SETTINGS.autoScrollIdleRounds;
+  }
+
+  const truncated = Math.trunc(value);
+  if (truncated < COLLECTOR_AUTO_SCROLL_IDLE_ROUNDS_MIN) {
+    return COLLECTOR_AUTO_SCROLL_IDLE_ROUNDS_MIN;
+  }
+  if (truncated > COLLECTOR_AUTO_SCROLL_IDLE_ROUNDS_MAX) {
+    return COLLECTOR_AUTO_SCROLL_IDLE_ROUNDS_MAX;
+  }
+  return truncated;
+}
+
+function normalizeCollectorAutoScrollSettleDelayMs(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_COLLECTOR_SETTINGS.autoScrollSettleDelayMs;
+  }
+
+  const truncated = Math.trunc(value);
+  if (truncated < COLLECTOR_AUTO_SCROLL_SETTLE_DELAY_MIN_MS) {
+    return COLLECTOR_AUTO_SCROLL_SETTLE_DELAY_MIN_MS;
+  }
+  if (truncated > COLLECTOR_AUTO_SCROLL_SETTLE_DELAY_MAX_MS) {
+    return COLLECTOR_AUTO_SCROLL_SETTLE_DELAY_MAX_MS;
   }
   return truncated;
 }

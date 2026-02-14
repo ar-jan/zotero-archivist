@@ -81,6 +81,7 @@ Responsibilities:
 - Extract and normalize URLs.
 - Apply include/exclude pattern filtering.
 - Dedupe links within a run.
+- Optionally auto-scroll for infinite-scroll pages until no new content appears.
 - Return lightweight candidate metadata to background.
 
 The collector is not permanently injected.
@@ -123,8 +124,12 @@ Queue runtime statuses:
 - `running`
 - `paused`
 
-Default collector setting:
+Default collector settings:
 - `maxLinksPerRun = 500` (clamped to `1..5000`)
+- `autoScrollEnabled = true`
+- `autoScrollMaxRounds = 30` (clamped to `1..200`)
+- `autoScrollIdleRounds = 3` (clamped to `1..20`)
+- `autoScrollSettleDelayMs = 750` (clamped to `100..10000`)
 
 Default queue pacing settings:
 - `interItemDelayMs = 5000`
@@ -150,7 +155,7 @@ Durable data in `chrome.storage.local`:
 3. Background validates active tab and permission state.
 4. Background injects `content/collector.js` with `chrome.scripting.executeScript`.
 5. Background sends `RUN_COLLECTOR` message with selector rules and max link cap.
-6. Collector returns normalized link candidates.
+6. Collector auto-scrolls with bounded retries (when enabled), then returns normalized link candidates.
 7. Background persists candidates and returns updated diagnostics.
 8. Panel renders and enables curation actions.
 

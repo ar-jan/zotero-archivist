@@ -8,37 +8,71 @@
   const DEFAULT_MAX_LINKS = 500;
   const MIN_MAX_LINKS = 1;
   const MAX_MAX_LINKS = 5000;
+  const DEFAULT_AUTO_SCROLL_ENABLED = true;
+  const DEFAULT_AUTO_SCROLL_MAX_ROUNDS = 30;
+  const MIN_AUTO_SCROLL_MAX_ROUNDS = 1;
+  const MAX_AUTO_SCROLL_MAX_ROUNDS = 200;
+  const DEFAULT_AUTO_SCROLL_IDLE_ROUNDS = 3;
+  const MIN_AUTO_SCROLL_IDLE_ROUNDS = 1;
+  const MAX_AUTO_SCROLL_IDLE_ROUNDS = 20;
+  const DEFAULT_AUTO_SCROLL_SETTLE_DELAY_MS = 750;
+  const MIN_AUTO_SCROLL_SETTLE_DELAY_MS = 100;
+  const MAX_AUTO_SCROLL_SETTLE_DELAY_MS = 10000;
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== RUN_COLLECTOR) {
       return false;
     }
 
-    try {
-      const rules = Array.isArray(message.payload?.rules) ? message.payload.rules : [];
-      const maxLinks = normalizeMaxLinks(message.payload?.maxLinks);
-      const links = collectLinks(rules, maxLinks);
-      sendResponse({ ok: true, links });
-    } catch (error) {
-      sendResponse({
-        ok: false,
-        error: {
-          message: error instanceof Error ? error.message : String(error)
-        }
+    void handleCollectorMessage(message.payload)
+      .then((links) => {
+        sendResponse({ ok: true, links });
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: {
+            message: error instanceof Error ? error.message : String(error)
+          }
+        });
       });
-    }
 
-    return false;
+    return true;
   });
 
-  function collectLinks(rules, maxLinks) {
+  async function handleCollectorMessage(payload) {
+    const rules = Array.isArray(payload?.rules) ? payload.rules : [];
+    const settings = normalizeCollectorRunSettings(payload);
+    return collectLinks(rules, settings);
+  }
+
+  async function collectLinks(rules, settings) {
     const enabledRules = Array.isArray(rules)
       ? rules.filter((rule) => rule && rule.enabled !== false && typeof rule.cssSelector === "string")
       : [];
 
     const dedupe = new Set();
     const collected = [];
+    const maxLinks = settings.maxLinks;
 
+    collectLinksFromDom(enabledRules, maxLinks, dedupe, collected);
+
+    if (
+      settings.autoScrollEnabled &&
+      enabledRules.length > 0 &&
+      collected.length < maxLinks
+    ) {
+      try {
+        await autoScrollAndCollect(enabledRules, settings, dedupe, collected);
+      } catch (_error) {
+      }
+    }
+
+    return collected;
+  }
+
+  function collectLinksFromDom(enabledRules, maxLinks, dedupe, collected) {
+    let addedCount = 0;
     for (const rule of enabledRules) {
       const selectorId = typeof rule.id === "string" && rule.id.length > 0 ? rule.id : "unknown";
       const urlAttribute =
@@ -55,7 +89,7 @@
 
       for (const element of elements) {
         if (collected.length >= maxLinks) {
-          return collected;
+          return addedCount;
         }
 
         const rawUrl = getRawUrl(element, urlAttribute);
@@ -90,10 +124,134 @@
           selected: true,
           dedupeKey
         });
+        addedCount += 1;
       }
     }
 
-    return collected;
+    return addedCount;
+  }
+
+  async function autoScrollAndCollect(enabledRules, settings, dedupe, collected) {
+    const scrollContainer = getScrollContainer();
+    if (!scrollContainer) {
+      return;
+    }
+
+    const initialScrollTop = getScrollTop(scrollContainer);
+    let idleRounds = 0;
+
+    try {
+      for (let round = 0; round < settings.autoScrollMaxRounds; round += 1) {
+        if (collected.length >= settings.maxLinks) {
+          return;
+        }
+
+        const previousHeight = getScrollHeight(scrollContainer);
+        const previousCollectedCount = collected.length;
+
+        scrollToPosition(scrollContainer, previousHeight);
+        await wait(settings.autoScrollSettleDelayMs);
+
+        const currentHeight = getScrollHeight(scrollContainer);
+        const addedCount = collectLinksFromDom(enabledRules, settings.maxLinks, dedupe, collected);
+        const hasNewLinks = collected.length > previousCollectedCount || addedCount > 0;
+        const hasPageGrowth = currentHeight > previousHeight;
+
+        if (hasNewLinks || hasPageGrowth) {
+          idleRounds = 0;
+          continue;
+        }
+
+        idleRounds += 1;
+        if (idleRounds >= settings.autoScrollIdleRounds) {
+          return;
+        }
+      }
+    } finally {
+      scrollToPosition(scrollContainer, initialScrollTop);
+    }
+  }
+
+  function getScrollContainer() {
+    if (document.scrollingElement) {
+      return document.scrollingElement;
+    }
+    if (document.documentElement) {
+      return document.documentElement;
+    }
+    if (document.body) {
+      return document.body;
+    }
+    return null;
+  }
+
+  function getScrollHeight(scrollContainer) {
+    if (!scrollContainer) {
+      return 0;
+    }
+
+    if (isRootScrollContainer(scrollContainer)) {
+      const rootHeight = Number.isFinite(scrollContainer.scrollHeight)
+        ? scrollContainer.scrollHeight
+        : 0;
+      const documentElementHeight = Number.isFinite(document.documentElement?.scrollHeight)
+        ? document.documentElement.scrollHeight
+        : 0;
+      const bodyHeight = Number.isFinite(document.body?.scrollHeight) ? document.body.scrollHeight : 0;
+      return Math.max(rootHeight, documentElementHeight, bodyHeight);
+    }
+
+    return Number.isFinite(scrollContainer.scrollHeight) ? scrollContainer.scrollHeight : 0;
+  }
+
+  function getScrollTop(scrollContainer) {
+    if (!scrollContainer) {
+      return 0;
+    }
+
+    if (isRootScrollContainer(scrollContainer) && Number.isFinite(window.scrollY)) {
+      return window.scrollY;
+    }
+
+    return Number.isFinite(scrollContainer.scrollTop) ? scrollContainer.scrollTop : 0;
+  }
+
+  function scrollToPosition(scrollContainer, top) {
+    if (!scrollContainer) {
+      return;
+    }
+
+    const normalizedTop = Number.isFinite(top) ? Math.max(0, Math.trunc(top)) : 0;
+    if (isRootScrollContainer(scrollContainer)) {
+      window.scrollTo(0, normalizedTop);
+      return;
+    }
+
+    scrollContainer.scrollTop = normalizedTop;
+  }
+
+  function wait(delayMs) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, delayMs);
+    });
+  }
+
+  function isRootScrollContainer(scrollContainer) {
+    return (
+      scrollContainer === document.scrollingElement ||
+      scrollContainer === document.documentElement ||
+      scrollContainer === document.body
+    );
+  }
+
+  function normalizeCollectorRunSettings(payload) {
+    return {
+      maxLinks: normalizeMaxLinks(payload?.maxLinks),
+      autoScrollEnabled: normalizeAutoScrollEnabled(payload?.autoScrollEnabled),
+      autoScrollMaxRounds: normalizeAutoScrollMaxRounds(payload?.autoScrollMaxRounds),
+      autoScrollIdleRounds: normalizeAutoScrollIdleRounds(payload?.autoScrollIdleRounds),
+      autoScrollSettleDelayMs: normalizeAutoScrollSettleDelayMs(payload?.autoScrollSettleDelayMs)
+    };
   }
 
   function normalizeMaxLinks(value) {
@@ -107,6 +265,58 @@
     }
     if (normalized > MAX_MAX_LINKS) {
       return MAX_MAX_LINKS;
+    }
+    return normalized;
+  }
+
+  function normalizeAutoScrollEnabled(value) {
+    if (value === true) {
+      return true;
+    }
+    if (value === false) {
+      return false;
+    }
+    return DEFAULT_AUTO_SCROLL_ENABLED;
+  }
+
+  function normalizeAutoScrollMaxRounds(value) {
+    return normalizeInteger(
+      value,
+      DEFAULT_AUTO_SCROLL_MAX_ROUNDS,
+      MIN_AUTO_SCROLL_MAX_ROUNDS,
+      MAX_AUTO_SCROLL_MAX_ROUNDS
+    );
+  }
+
+  function normalizeAutoScrollIdleRounds(value) {
+    return normalizeInteger(
+      value,
+      DEFAULT_AUTO_SCROLL_IDLE_ROUNDS,
+      MIN_AUTO_SCROLL_IDLE_ROUNDS,
+      MAX_AUTO_SCROLL_IDLE_ROUNDS
+    );
+  }
+
+  function normalizeAutoScrollSettleDelayMs(value) {
+    return normalizeInteger(
+      value,
+      DEFAULT_AUTO_SCROLL_SETTLE_DELAY_MS,
+      MIN_AUTO_SCROLL_SETTLE_DELAY_MS,
+      MAX_AUTO_SCROLL_SETTLE_DELAY_MS
+    );
+  }
+
+  function normalizeInteger(value, fallback, min, max) {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+
+    const normalized = Math.trunc(value);
+    if (normalized < min) {
+      return min;
+    }
+    if (normalized > max) {
+      return max;
     }
     return normalized;
   }

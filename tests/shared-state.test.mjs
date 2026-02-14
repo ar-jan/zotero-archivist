@@ -29,19 +29,37 @@ test("normalizeCollectedLinks keeps only unique valid http(s) links", () => {
   assert.equal(links[1].selected, false);
 });
 
-test("normalizeCollectorSettings applies defaults and clamps max links", () => {
+test("normalizeCollectorSettings applies defaults and clamps bounds", () => {
   const defaults = normalizeCollectorSettings(null);
   assert.equal(defaults.maxLinksPerRun, 500);
+  assert.equal(defaults.autoScrollEnabled, true);
+  assert.equal(defaults.autoScrollMaxRounds, 30);
+  assert.equal(defaults.autoScrollIdleRounds, 3);
+  assert.equal(defaults.autoScrollSettleDelayMs, 750);
 
   const clampedLow = normalizeCollectorSettings({
-    maxLinksPerRun: 0
+    maxLinksPerRun: 0,
+    autoScrollEnabled: false,
+    autoScrollMaxRounds: 0,
+    autoScrollIdleRounds: 0,
+    autoScrollSettleDelayMs: 0
   });
   assert.equal(clampedLow.maxLinksPerRun, 1);
+  assert.equal(clampedLow.autoScrollEnabled, false);
+  assert.equal(clampedLow.autoScrollMaxRounds, 1);
+  assert.equal(clampedLow.autoScrollIdleRounds, 1);
+  assert.equal(clampedLow.autoScrollSettleDelayMs, 100);
 
   const clampedHigh = normalizeCollectorSettings({
-    maxLinksPerRun: 99999
+    maxLinksPerRun: 99999,
+    autoScrollMaxRounds: 99999,
+    autoScrollIdleRounds: 99999,
+    autoScrollSettleDelayMs: 99999
   });
   assert.equal(clampedHigh.maxLinksPerRun, 5000);
+  assert.equal(clampedHigh.autoScrollMaxRounds, 200);
+  assert.equal(clampedHigh.autoScrollIdleRounds, 20);
+  assert.equal(clampedHigh.autoScrollSettleDelayMs, 10000);
 });
 
 test("normalizeQueueSettings applies defaults and clamps delay bounds", () => {

@@ -17,6 +17,10 @@ test("storage repo initializes collector settings defaults when missing", async 
   const collectorSettings = await getCollectorSettings();
 
   assert.equal(collectorSettings.maxLinksPerRun, 500);
+  assert.equal(collectorSettings.autoScrollEnabled, true);
+  assert.equal(collectorSettings.autoScrollMaxRounds, 30);
+  assert.equal(collectorSettings.autoScrollIdleRounds, 3);
+  assert.equal(collectorSettings.autoScrollSettleDelayMs, 750);
   assert.equal(chromeMock.writes.length, 1);
   assert.equal(Boolean(chromeMock.storageState[STORAGE_KEYS.COLLECTOR_SETTINGS]), true);
 });
@@ -24,7 +28,11 @@ test("storage repo initializes collector settings defaults when missing", async 
 test("storage repo normalizes malformed collector settings and writes back", async (t) => {
   const chromeMock = installStorageChromeMock({
     [STORAGE_KEYS.COLLECTOR_SETTINGS]: {
-      maxLinksPerRun: -7
+      maxLinksPerRun: -7,
+      autoScrollEnabled: "sometimes",
+      autoScrollMaxRounds: -1,
+      autoScrollIdleRounds: 99,
+      autoScrollSettleDelayMs: -100
     }
   });
   t.after(() => chromeMock.restore());
@@ -32,6 +40,10 @@ test("storage repo normalizes malformed collector settings and writes back", asy
   const collectorSettings = await getCollectorSettings();
 
   assert.equal(collectorSettings.maxLinksPerRun, 1);
+  assert.equal(collectorSettings.autoScrollEnabled, true);
+  assert.equal(collectorSettings.autoScrollMaxRounds, 1);
+  assert.equal(collectorSettings.autoScrollIdleRounds, 20);
+  assert.equal(collectorSettings.autoScrollSettleDelayMs, 100);
   assert.equal(chromeMock.writes.length, 1);
 });
 
