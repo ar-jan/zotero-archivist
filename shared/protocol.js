@@ -37,8 +37,7 @@ export const ERROR_CODES = Object.freeze({
 });
 
 export const SAVE_PROVIDER_MODES = Object.freeze({
-  CONNECTOR_BRIDGE: "connector_bridge",
-  LOCAL_API: "local_api"
+  CONNECTOR_BRIDGE: "connector_bridge"
 });
 
 export const DEFAULT_PROVIDER_SETTINGS = Object.freeze({

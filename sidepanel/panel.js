@@ -1477,9 +1477,6 @@ function formatProviderModeLabel(mode) {
   if (mode === "connector_bridge") {
     return "connector bridge";
   }
-  if (mode === "local_api") {
-    return "local api";
-  }
   return "connector bridge";
 }
 

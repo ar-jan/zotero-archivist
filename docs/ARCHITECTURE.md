@@ -66,7 +66,6 @@
 
 4. `zotero/providers/*`
    - `connectorBridgeProvider` (default provider)
-   - `localApiProvider` (future option)
 
 5. `shared/protocol.js`
    - Message contracts between sidepanel, background, and content scripts
@@ -90,8 +89,7 @@ zotero-archivist/
 │   └── collector.js
 ├── zotero/
 │   ├── provider-interface.js
-│   ├── provider-connector-bridge.js
-│   └── provider-local-api.js
+│   └── provider-connector-bridge.js
 ├── shared/
 │   ├── protocol.js
 │   ├── schema.js
@@ -170,7 +168,7 @@ type QueueItem = {
   updatedAt: number;
 };
 
-type SaveProviderMode = "connector_bridge" | "local_api";
+type SaveProviderMode = "connector_bridge";
 ```
 
 ## 8) Queue Engine (MV3-safe)
@@ -235,7 +233,6 @@ interface ZoteroSaveProvider {
 ## 10.2 Provider order
 
 1. `connector_bridge` (if explicitly enabled and health check passes)
-2. `local_api` (future; not in MVP)
 
 ## 10.3 Connector bridge provider (advanced)
 
@@ -280,7 +277,7 @@ interface ZoteroSaveProvider {
    - stop
    - retry failed
 4. Operational clarity:
-   - current mode (`connector_bridge`, future `local_api`)
+   - current mode (`connector_bridge`)
    - active Zotero detection state
    - explicit warnings on degraded mode
 
@@ -345,18 +342,12 @@ interface ZoteroSaveProvider {
 
 1. Implement `connector_bridge` provider behind feature flag.
 2. Add health checks and explicit failure diagnostics.
-3. Keep `local_api` as a future provider path.
 
 ### Phase 4: Hardening
 
 1. Add diagnostics panel.
 2. Add contract tests against installed connector.
 3. Add compatibility kill switch for bridge regressions.
-
-### Phase 5: Optional future path
-
-1. Evaluate `local_api` provider against Zotero local connector endpoints.
-2. Compare reliability/maintenance cost versus bridge mode.
 
 ## 16) MVP Definition (Best-Practice Baseline)
 

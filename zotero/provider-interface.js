@@ -28,8 +28,7 @@ export function normalizeProviderDiagnostics(input) {
 
   const activeMode =
     typeof input.activeMode === "string" &&
-    (input.activeMode === SAVE_PROVIDER_MODES.CONNECTOR_BRIDGE ||
-      input.activeMode === SAVE_PROVIDER_MODES.LOCAL_API)
+    input.activeMode === SAVE_PROVIDER_MODES.CONNECTOR_BRIDGE
       ? input.activeMode
       : defaults.activeMode;
 
