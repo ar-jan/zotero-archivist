@@ -52,6 +52,59 @@ test("runQueueEngineSoon archives an active item when provider save succeeds", a
   assert.ok(chromeMock.alarms.cleared.includes(QUEUE_ENGINE_ALARM_NAME));
 });
 
+test("runQueueEngineSoon waits configured delay before processing next item", async (t) => {
+  const chromeMock = installChromeMock({
+    tabsById: new Map([
+      [51, { id: 51, url: "https://example.com/a", status: "complete" }]
+    ])
+  });
+  t.after(() => chromeMock.restore());
+
+  const harness = createQueueEngineHarness({
+    queueItems: [
+      createQueueItem({ id: "q1", url: "https://example.com/a", status: "opening_tab", attempts: 1 }),
+      createQueueItem({ id: "q2", url: "https://example.com/b", status: "pending" })
+    ],
+    queueRuntime: createQueueRuntime({
+      status: "running",
+      activeQueueItemId: "q1",
+      activeTabId: 51
+    }),
+    queueSettings: {
+      interItemDelayMs: 200,
+      interItemDelayJitterMs: 0
+    },
+    saveQueueItemWithProvider: async () => ({ ok: true })
+  });
+
+  await harness.queueEngine.runQueueEngineSoon("test-delay");
+  await harness.queueEngine.waitForIdle();
+
+  const settledState = harness.getState();
+  assert.equal(settledState.queueItems[0].status, "archived");
+  assert.equal(settledState.queueItems[1].status, "pending");
+  assert.equal(settledState.queueRuntime.status, "running");
+  assert.equal(settledState.queueRuntime.activeQueueItemId, null);
+  assert.equal(settledState.queueRuntime.activeTabId, null);
+  assert.ok(Number.isFinite(settledState.queueRuntime.nextRunAt));
+  assert.equal(chromeMock.tabs.created.length, 0);
+  assert.equal(harness.delayTimers.scheduled.at(-1)?.delayMs, 200);
+
+  harness.setQueueRuntime({
+    ...settledState.queueRuntime,
+    nextRunAt: Date.now() - 1
+  });
+  await harness.queueEngine.runQueueEngineSoon("test-delay-elapsed");
+  await harness.queueEngine.waitForIdle();
+
+  const resumedState = harness.getState();
+  assert.equal(resumedState.queueItems[1].status, "opening_tab");
+  assert.equal(resumedState.queueRuntime.activeQueueItemId, "q2");
+  assert.ok(Number.isInteger(resumedState.queueRuntime.activeTabId));
+  assert.equal(resumedState.queueRuntime.nextRunAt, null);
+  assert.equal(chromeMock.tabs.created.length, 1);
+});
+
 test("runQueueEngineSoon fails an active item when provider save fails", async (t) => {
   const chromeMock = installChromeMock({
     tabsById: new Map([
@@ -152,10 +205,42 @@ test("recoverQueueEngineState resumes pending work after restart", async (t) => 
 function createQueueEngineHarness({
   queueItems = [],
   queueRuntime = createQueueRuntime(),
+  queueSettings = {
+    interItemDelayMs: 0,
+    interItemDelayJitterMs: 0
+  },
+  randomImpl = () => 0.5,
   saveQueueItemWithProvider = async () => ({ ok: true })
 } = {}) {
   let currentQueueItems = queueItems.map((item) => ({ ...item }));
   let currentQueueRuntime = { ...queueRuntime };
+  let nextDelayTimerId = 1;
+  const delayTimerCallbacks = new Map();
+  const scheduledDelayTimers = [];
+  const clearedDelayTimers = [];
+
+  const delayTimers = {
+    scheduled: scheduledDelayTimers,
+    cleared: clearedDelayTimers,
+    run(timerId) {
+      const callback = delayTimerCallbacks.get(timerId);
+      if (typeof callback !== "function") {
+        return false;
+      }
+
+      delayTimerCallbacks.delete(timerId);
+      callback();
+      return true;
+    },
+    runLatest() {
+      const latest = scheduledDelayTimers.at(-1);
+      if (!latest) {
+        return false;
+      }
+
+      return this.run(latest.id);
+    }
+  };
 
   const queueEngine = createQueueEngine({
     getQueueRuntime: async () => ({ ...currentQueueRuntime }),
@@ -168,11 +253,28 @@ function createQueueEngineHarness({
       currentQueueItems = nextQueueItems.map((item) => ({ ...item }));
       return currentQueueItems;
     },
+    getQueueSettings: async () => ({ ...queueSettings }),
+    randomImpl,
+    setQueueEngineDelayTimerImpl: (delayMs, callback) => {
+      const timerId = nextDelayTimerId;
+      nextDelayTimerId += 1;
+      scheduledDelayTimers.push({ id: timerId, delayMs });
+      delayTimerCallbacks.set(timerId, callback);
+      return timerId;
+    },
+    clearQueueEngineDelayTimerImpl: (timerId) => {
+      clearedDelayTimers.push(timerId);
+      delayTimerCallbacks.delete(timerId);
+    },
     saveQueueItemWithProvider
   });
 
   return {
+    delayTimers,
     queueEngine,
+    setQueueRuntime(nextQueueRuntime) {
+      currentQueueRuntime = { ...nextQueueRuntime };
+    },
     getState() {
       return {
         queueItems: currentQueueItems.map((item) => ({ ...item })),
@@ -187,6 +289,7 @@ function createQueueRuntime(overrides = {}) {
     status: "idle",
     activeQueueItemId: null,
     activeTabId: null,
+    nextRunAt: null,
     updatedAt: Date.now(),
     ...overrides
   };

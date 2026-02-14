@@ -7,6 +7,7 @@ import {
   normalizeCollectorSettings,
   normalizeCollectedLinks,
   normalizeQueueItems,
+  normalizeQueueSettings,
   normalizeQueueRuntime
 } from "../shared/state.js";
 import { normalizeProviderDiagnostics } from "../zotero/provider-interface.js";
@@ -53,6 +54,32 @@ export async function saveCollectorSettings(collectorSettings) {
 
 export async function ensureCollectorSettings() {
   await getCollectorSettings();
+}
+
+export async function getQueueSettings() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.QUEUE_SETTINGS);
+  const rawQueueSettings = stored[STORAGE_KEYS.QUEUE_SETTINGS];
+  const queueSettings = normalizeQueueSettings(rawQueueSettings);
+
+  const needsWriteBack =
+    !rawQueueSettings || JSON.stringify(rawQueueSettings) !== JSON.stringify(queueSettings);
+  if (needsWriteBack) {
+    await saveQueueSettings(queueSettings);
+  }
+
+  return queueSettings;
+}
+
+export async function saveQueueSettings(queueSettings) {
+  const normalized = normalizeQueueSettings(queueSettings);
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.QUEUE_SETTINGS]: normalized
+  });
+  return normalized;
+}
+
+export async function ensureQueueSettings() {
+  await getQueueSettings();
 }
 
 export async function getSelectorRules() {

@@ -13,18 +13,27 @@ export const QUEUE_RUNTIME_STATUSES = Object.freeze(["idle", "running", "paused"
 export const DEFAULT_COLLECTOR_SETTINGS = Object.freeze({
   maxLinksPerRun: 500
 });
+export const DEFAULT_QUEUE_SETTINGS = Object.freeze({
+  interItemDelayMs: 5000,
+  interItemDelayJitterMs: 2000
+});
 
 const QUEUE_ITEM_STATUS_SET = new Set(QUEUE_ITEM_STATUSES);
 const QUEUE_RUNTIME_STATUS_SET = new Set(QUEUE_RUNTIME_STATUSES);
 const QUEUE_ACTIVE_ITEM_STATUS_SET = new Set(["opening_tab", "saving_snapshot"]);
 const COLLECTOR_MAX_LINKS_MIN = 1;
 const COLLECTOR_MAX_LINKS_MAX = 5000;
+const QUEUE_INTER_ITEM_DELAY_MIN_MS = 0;
+const QUEUE_INTER_ITEM_DELAY_MAX_MS = 600000;
+const QUEUE_INTER_ITEM_JITTER_MIN_MS = 0;
+const QUEUE_INTER_ITEM_JITTER_MAX_MS = 60000;
 
 export function createDefaultQueueRuntimeState(now = Date.now()) {
   return {
     status: "idle",
     activeQueueItemId: null,
     activeTabId: null,
+    nextRunAt: null,
     updatedAt: now
   };
 }
@@ -96,6 +105,19 @@ export function normalizeCollectorSettings(input) {
   const maxLinksPerRun = normalizeCollectorMaxLinks(input.maxLinksPerRun);
   return {
     maxLinksPerRun
+  };
+}
+
+export function normalizeQueueSettings(input) {
+  if (!input || typeof input !== "object") {
+    return { ...DEFAULT_QUEUE_SETTINGS };
+  }
+
+  const interItemDelayMs = normalizeQueueInterItemDelayMs(input.interItemDelayMs);
+  const interItemDelayJitterMs = normalizeQueueInterItemJitterMs(input.interItemDelayJitterMs);
+  return {
+    interItemDelayMs,
+    interItemDelayJitterMs
   };
 }
 
@@ -190,15 +212,28 @@ export function normalizeQueueRuntime(input) {
       ? input.activeQueueItemId
       : null;
   const activeTabId = Number.isInteger(input.activeTabId) ? input.activeTabId : null;
+  const nextRunAt =
+    Number.isFinite(input.nextRunAt) && input.nextRunAt > 0 ? Math.trunc(input.nextRunAt) : null;
 
   const updatedAt =
     Number.isFinite(input.updatedAt) && input.updatedAt > 0 ? Math.trunc(input.updatedAt) : now;
 
-  if (status === "idle" || activeQueueItemId === null || activeTabId === null) {
+  if (status === "idle") {
     return {
       status,
       activeQueueItemId: null,
       activeTabId: null,
+      nextRunAt: null,
+      updatedAt
+    };
+  }
+
+  if (activeQueueItemId === null || activeTabId === null) {
+    return {
+      status,
+      activeQueueItemId: null,
+      activeTabId: null,
+      nextRunAt,
       updatedAt
     };
   }
@@ -207,6 +242,7 @@ export function normalizeQueueRuntime(input) {
     status,
     activeQueueItemId,
     activeTabId,
+    nextRunAt: null,
     updatedAt
   };
 }
@@ -231,7 +267,8 @@ export function clearQueueRuntimeActive(queueRuntime) {
   return {
     ...queueRuntime,
     activeQueueItemId: null,
-    activeTabId: null
+    activeTabId: null,
+    nextRunAt: null
   };
 }
 
@@ -265,6 +302,36 @@ function normalizeCollectorMaxLinks(value) {
   }
   if (truncated > COLLECTOR_MAX_LINKS_MAX) {
     return COLLECTOR_MAX_LINKS_MAX;
+  }
+  return truncated;
+}
+
+function normalizeQueueInterItemDelayMs(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_QUEUE_SETTINGS.interItemDelayMs;
+  }
+
+  const truncated = Math.trunc(value);
+  if (truncated < QUEUE_INTER_ITEM_DELAY_MIN_MS) {
+    return QUEUE_INTER_ITEM_DELAY_MIN_MS;
+  }
+  if (truncated > QUEUE_INTER_ITEM_DELAY_MAX_MS) {
+    return QUEUE_INTER_ITEM_DELAY_MAX_MS;
+  }
+  return truncated;
+}
+
+function normalizeQueueInterItemJitterMs(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_QUEUE_SETTINGS.interItemDelayJitterMs;
+  }
+
+  const truncated = Math.trunc(value);
+  if (truncated < QUEUE_INTER_ITEM_JITTER_MIN_MS) {
+    return QUEUE_INTER_ITEM_JITTER_MIN_MS;
+  }
+  if (truncated > QUEUE_INTER_ITEM_JITTER_MAX_MS) {
+    return QUEUE_INTER_ITEM_JITTER_MAX_MS;
   }
   return truncated;
 }

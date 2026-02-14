@@ -10,6 +10,7 @@ import {
   normalizeCollectorSettings,
   normalizeCollectedLinks,
   normalizeQueueItems,
+  normalizeQueueSettings,
   normalizeQueueRuntime
 } from "../shared/state.js";
 
@@ -43,6 +44,26 @@ test("normalizeCollectorSettings applies defaults and clamps max links", () => {
   assert.equal(clampedHigh.maxLinksPerRun, 5000);
 });
 
+test("normalizeQueueSettings applies defaults and clamps delay bounds", () => {
+  const defaults = normalizeQueueSettings(null);
+  assert.equal(defaults.interItemDelayMs, 5000);
+  assert.equal(defaults.interItemDelayJitterMs, 2000);
+
+  const clampedLow = normalizeQueueSettings({
+    interItemDelayMs: -100,
+    interItemDelayJitterMs: -20
+  });
+  assert.equal(clampedLow.interItemDelayMs, 0);
+  assert.equal(clampedLow.interItemDelayJitterMs, 0);
+
+  const clampedHigh = normalizeQueueSettings({
+    interItemDelayMs: 999999,
+    interItemDelayJitterMs: 999999
+  });
+  assert.equal(clampedHigh.interItemDelayMs, 600000);
+  assert.equal(clampedHigh.interItemDelayJitterMs, 60000);
+});
+
 test("normalizeQueueItems normalizes status and dedupes urls", () => {
   const queueItems = normalizeQueueItems([
     { id: "q1", url: "https://example.com/x", status: "archived", attempts: 2 },
@@ -66,30 +87,36 @@ test("normalizeQueueRuntime clears invalid active context", () => {
   assert.equal(idle.status, "idle");
   assert.equal(idle.activeQueueItemId, null);
   assert.equal(idle.activeTabId, null);
+  assert.equal(idle.nextRunAt, null);
 
   const invalidRunning = normalizeQueueRuntime({
     status: "running",
     activeQueueItemId: "x",
-    activeTabId: null
+    activeTabId: null,
+    nextRunAt: 1234
   });
   assert.equal(invalidRunning.status, "running");
   assert.equal(invalidRunning.activeQueueItemId, null);
   assert.equal(invalidRunning.activeTabId, null);
+  assert.equal(invalidRunning.nextRunAt, 1234);
 });
 
 test("queue helper functions expose expected transitions", () => {
   const now = Date.now();
   const defaultRuntime = createDefaultQueueRuntimeState(now);
   assert.equal(defaultRuntime.status, "idle");
+  assert.equal(defaultRuntime.nextRunAt, null);
 
   const activeCleared = clearQueueRuntimeActive({
     status: "running",
     activeQueueItemId: "q1",
     activeTabId: 12,
+    nextRunAt: 99,
     updatedAt: now
   });
   assert.equal(activeCleared.activeQueueItemId, null);
   assert.equal(activeCleared.activeTabId, null);
+  assert.equal(activeCleared.nextRunAt, null);
 
   const failed = markQueueItemFailed(
     {

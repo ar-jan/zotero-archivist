@@ -17,6 +17,7 @@ export const STORAGE_KEYS = Object.freeze({
   SELECTOR_RULES: "selectorRules",
   COLLECTED_LINKS: "collectedLinks",
   COLLECTOR_SETTINGS: "collectorSettings",
+  QUEUE_SETTINGS: "queueSettings",
   QUEUE_ITEMS: "queueItems",
   QUEUE_RUNTIME: "queueRuntime",
   PROVIDER_DIAGNOSTICS: "providerDiagnostics"

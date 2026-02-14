@@ -1,11 +1,14 @@
 import {
+  DEFAULT_QUEUE_SETTINGS,
   clearQueueRuntimeActive,
   isQueueItemActiveStatus,
-  markQueueItemFailed
+  markQueueItemFailed,
+  normalizeQueueSettings
 } from "../shared/state.js";
 
 export const QUEUE_ENGINE_ALARM_NAME = "queue-engine-watchdog";
 const QUEUE_ALARM_DELAY_MINUTES = 1;
+const QUEUE_INTER_ITEM_DELAY_MIN_MS = 0;
 const QUEUE_TAB_LOAD_TIMEOUT_MESSAGE = "Queue tab did not finish loading before timeout.";
 const QUEUE_TAB_CLOSED_MESSAGE = "Queue tab was closed before loading completed.";
 
@@ -14,9 +17,14 @@ export function createQueueEngine({
   saveQueueRuntime,
   getQueueItems,
   saveQueueItems,
-  saveQueueItemWithProvider
+  saveQueueItemWithProvider,
+  getQueueSettings = async () => ({ ...DEFAULT_QUEUE_SETTINGS }),
+  randomImpl = Math.random,
+  setQueueEngineDelayTimerImpl = (delayMs, callback) => setTimeout(callback, delayMs),
+  clearQueueEngineDelayTimerImpl = (timerId) => clearTimeout(timerId)
 }) {
   let queueEngineRun = Promise.resolve();
+  let queueEngineDelayTimerId = null;
 
   function runQueueEngineSoon(trigger) {
     queueEngineRun = queueEngineRun
@@ -31,6 +39,7 @@ export function createQueueEngine({
   async function runQueueEngine(_trigger) {
     let queueRuntime = await getQueueRuntime();
     if (queueRuntime.status !== "running") {
+      clearQueueEngineDelayTimer();
       await clearQueueAlarm();
       return;
     }
@@ -56,13 +65,7 @@ export function createQueueEngine({
           "Queue runtime lost active tab context."
         );
         await saveQueueItems(queueItems);
-        queueRuntime = {
-          ...clearQueueRuntimeActive(queueRuntime),
-          updatedAt: Date.now()
-        };
-        await saveQueueRuntime(queueRuntime);
-        await clearQueueAlarm();
-        runQueueEngineSoon("missing-active-tab-id");
+        await scheduleNextQueueRun("missing-active-tab-id");
         return;
       }
 
@@ -77,13 +80,7 @@ export function createQueueEngine({
         queueItems = [...queueItems];
         queueItems[activeIndex] = markQueueItemFailed(queueItems[activeIndex], QUEUE_TAB_CLOSED_MESSAGE);
         await saveQueueItems(queueItems);
-        queueRuntime = {
-          ...clearQueueRuntimeActive(queueRuntime),
-          updatedAt: Date.now()
-        };
-        await saveQueueRuntime(queueRuntime);
-        await clearQueueAlarm();
-        runQueueEngineSoon("active-tab-missing");
+        await scheduleNextQueueRun("active-tab-missing");
         return;
       }
 
@@ -124,13 +121,7 @@ export function createQueueEngine({
         await saveQueueItems(nextQueueItems);
         await closeTabIfPresent(activeTabId);
 
-        queueRuntime = {
-          ...clearQueueRuntimeActive(await getQueueRuntime()),
-          updatedAt: Date.now()
-        };
-        await saveQueueRuntime(queueRuntime);
-        await clearQueueAlarm();
-        runQueueEngineSoon("save-success");
+        await scheduleNextQueueRun("save-success");
         return;
       }
 
@@ -145,25 +136,34 @@ export function createQueueEngine({
       await saveQueueItems(nextQueueItems);
       await closeTabIfPresent(activeTabId);
 
-      queueRuntime = {
-        ...clearQueueRuntimeActive(await getQueueRuntime()),
-        updatedAt: Date.now()
-      };
-      await saveQueueRuntime(queueRuntime);
-      await clearQueueAlarm();
-      runQueueEngineSoon("save-failed");
+      await scheduleNextQueueRun("save-failed");
       return;
     }
 
     queueRuntime = await getQueueRuntime();
     if (queueRuntime.status !== "running") {
+      clearQueueEngineDelayTimer();
       await clearQueueAlarm();
       return;
+    }
+
+    if (shouldWaitForInterItemDelay(queueRuntime)) {
+      scheduleQueueEngineDelayRun(queueRuntime.nextRunAt, "inter-item-delay");
+      return;
+    }
+
+    if (Number.isFinite(queueRuntime.nextRunAt)) {
+      queueRuntime = await saveQueueRuntime({
+        ...queueRuntime,
+        nextRunAt: null,
+        updatedAt: Date.now()
+      });
     }
 
     queueItems = await getQueueItems();
     const nextItemIndex = queueItems.findIndex((item) => item.status === "pending");
     if (nextItemIndex < 0) {
+      clearQueueEngineDelayTimer();
       const nextRuntime = {
         ...clearQueueRuntimeActive(queueRuntime),
         status: "idle",
@@ -197,21 +197,23 @@ export function createQueueEngine({
         `Failed to open queue tab: ${String(error)}`
       );
       await saveQueueItems(nextQueueItems);
-      runQueueEngineSoon("tab-create-error");
+      await scheduleNextQueueRun("tab-create-error");
       return;
     }
 
     if (!Number.isInteger(openedTabId)) {
       nextQueueItems[nextItemIndex] = markQueueItemFailed(itemToRun, "Queue tab did not provide a tab id.");
       await saveQueueItems(nextQueueItems);
-      runQueueEngineSoon("missing-tab-id");
+      await scheduleNextQueueRun("missing-tab-id");
       return;
     }
 
+    clearQueueEngineDelayTimer();
     const nextRuntime = {
       ...queueRuntime,
       activeQueueItemId: itemToRun.id,
       activeTabId: openedTabId,
+      nextRunAt: null,
       updatedAt: Date.now()
     };
     await saveQueueRuntime(nextRuntime);
@@ -245,11 +247,8 @@ export function createQueueEngine({
           await closeTabIfPresent(queueRuntime.activeTabId);
         }
 
-        const nextRuntime = {
-          ...clearQueueRuntimeActive(queueRuntime),
-          updatedAt: Date.now()
-        };
-        await saveQueueRuntime(nextRuntime);
+        await scheduleNextQueueRun("alarm-timeout");
+        return;
       }
     }
 
@@ -287,15 +286,7 @@ export function createQueueEngine({
       await saveQueueItems(nextQueueItems);
     }
 
-    const nextRuntime = {
-      ...clearQueueRuntimeActive(queueRuntime),
-      updatedAt: Date.now()
-    };
-    await saveQueueRuntime(nextRuntime);
-
-    if (queueRuntime.status === "running") {
-      runQueueEngineSoon("tab-removed");
-    }
+    await scheduleNextQueueRun("tab-removed");
   }
 
   async function recoverQueueEngineState() {
@@ -354,6 +345,91 @@ export function createQueueEngine({
     return queueEngineRun;
   }
 
+  async function scheduleNextQueueRun(trigger) {
+    const latestQueueRuntime = await getQueueRuntime();
+    const nextRuntimeBase = clearQueueRuntimeActive(latestQueueRuntime);
+
+    if (latestQueueRuntime.status !== "running") {
+      clearQueueEngineDelayTimer();
+      await saveQueueRuntime({
+        ...nextRuntimeBase,
+        updatedAt: Date.now()
+      });
+      await clearQueueAlarm();
+      return;
+    }
+
+    const delayMs = await resolveInterItemDelayMs();
+    const now = Date.now();
+    const nextRuntime = {
+      ...nextRuntimeBase,
+      nextRunAt: now + delayMs,
+      updatedAt: now
+    };
+    await saveQueueRuntime(nextRuntime);
+    await clearQueueAlarm();
+    scheduleQueueEngineDelayRun(nextRuntime.nextRunAt, `${trigger}-delayed`);
+  }
+
+  function scheduleQueueEngineDelayRun(nextRunAt, trigger) {
+    const delayMs = Math.max(
+      QUEUE_INTER_ITEM_DELAY_MIN_MS,
+      Math.trunc(nextRunAt) - Date.now()
+    );
+
+    clearQueueEngineDelayTimer();
+    if (delayMs === 0) {
+      runQueueEngineSoon(trigger);
+      return;
+    }
+
+    queueEngineDelayTimerId = setQueueEngineDelayTimerImpl(delayMs, () => {
+      queueEngineDelayTimerId = null;
+      runQueueEngineSoon(trigger);
+    });
+  }
+
+  function clearQueueEngineDelayTimer() {
+    if (queueEngineDelayTimerId === null || queueEngineDelayTimerId === undefined) {
+      return;
+    }
+
+    clearQueueEngineDelayTimerImpl(queueEngineDelayTimerId);
+    queueEngineDelayTimerId = null;
+  }
+
+  function shouldWaitForInterItemDelay(queueRuntime) {
+    return Number.isFinite(queueRuntime?.nextRunAt) && queueRuntime.nextRunAt > Date.now();
+  }
+
+  async function resolveInterItemDelayMs() {
+    const queueSettings = await getQueueSettingsSafely();
+    const normalizedQueueSettings = normalizeQueueSettings(queueSettings);
+
+    if (normalizedQueueSettings.interItemDelayJitterMs <= 0) {
+      return normalizedQueueSettings.interItemDelayMs;
+    }
+
+    const randomValue = normalizeRandomValue(randomImpl());
+    const jitterOffset = Math.round(
+      (randomValue * 2 - 1) * normalizedQueueSettings.interItemDelayJitterMs
+    );
+
+    return Math.max(
+      QUEUE_INTER_ITEM_DELAY_MIN_MS,
+      normalizedQueueSettings.interItemDelayMs + jitterOffset
+    );
+  }
+
+  async function getQueueSettingsSafely() {
+    try {
+      return await getQueueSettings();
+    } catch (error) {
+      console.error("[zotero-archivist] Failed to read queue settings.", error);
+      return { ...DEFAULT_QUEUE_SETTINGS };
+    }
+  }
+
   return {
     clearQueueAlarm,
     closeTabIfPresent,
@@ -364,4 +440,20 @@ export function createQueueEngine({
     runQueueEngineSoon,
     waitForIdle
   };
+}
+
+function normalizeRandomValue(value) {
+  if (!Number.isFinite(value)) {
+    return 0.5;
+  }
+
+  if (value < 0) {
+    return 0;
+  }
+
+  if (value > 1) {
+    return 1;
+  }
+
+  return value;
 }

@@ -19,11 +19,13 @@ import {
   ensureCollectorSettings,
   ensureProviderDiagnostics,
   ensureQueueItems,
+  ensureQueueSettings,
   ensureQueueRuntime,
   ensureSelectorRules,
   getCollectorSettings,
   getCollectedLinks,
   getQueueItems,
+  getQueueSettings,
   getQueueRuntime,
   getSelectorRules,
   saveCollectedLinks,
@@ -42,6 +44,7 @@ const queueEngine = createQueueEngine({
   saveQueueRuntime,
   getQueueItems,
   saveQueueItems,
+  getQueueSettings,
   saveQueueItemWithProvider: providerOrchestrator.saveQueueItemWithProvider
 });
 
@@ -106,6 +109,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 async function initializeExtensionState() {
   await Promise.all([
     ensureCollectorSettings(),
+    ensureQueueSettings(),
     ensureSelectorRules(),
     ensureQueueItems(),
     ensureQueueRuntime(),

@@ -5,6 +5,7 @@ import { DEFAULT_SELECTOR_RULES, STORAGE_KEYS } from "../shared/protocol.js";
 import {
   getCollectorSettings,
   getProviderDiagnostics,
+  getQueueSettings,
   getQueueRuntime,
   getSelectorRules
 } from "../background/storage-repo.js";
@@ -31,6 +32,34 @@ test("storage repo normalizes malformed collector settings and writes back", asy
   const collectorSettings = await getCollectorSettings();
 
   assert.equal(collectorSettings.maxLinksPerRun, 1);
+  assert.equal(chromeMock.writes.length, 1);
+});
+
+test("storage repo initializes queue settings defaults when missing", async (t) => {
+  const chromeMock = installStorageChromeMock();
+  t.after(() => chromeMock.restore());
+
+  const queueSettings = await getQueueSettings();
+
+  assert.equal(queueSettings.interItemDelayMs, 5000);
+  assert.equal(queueSettings.interItemDelayJitterMs, 2000);
+  assert.equal(chromeMock.writes.length, 1);
+  assert.equal(Boolean(chromeMock.storageState[STORAGE_KEYS.QUEUE_SETTINGS]), true);
+});
+
+test("storage repo normalizes malformed queue settings and writes back", async (t) => {
+  const chromeMock = installStorageChromeMock({
+    [STORAGE_KEYS.QUEUE_SETTINGS]: {
+      interItemDelayMs: -20,
+      interItemDelayJitterMs: 999999
+    }
+  });
+  t.after(() => chromeMock.restore());
+
+  const queueSettings = await getQueueSettings();
+
+  assert.equal(queueSettings.interItemDelayMs, 0);
+  assert.equal(queueSettings.interItemDelayJitterMs, 60000);
   assert.equal(chromeMock.writes.length, 1);
 });
 

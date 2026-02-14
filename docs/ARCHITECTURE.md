@@ -126,11 +126,16 @@ Queue runtime statuses:
 Default collector setting:
 - `maxLinksPerRun = 500` (clamped to `1..5000`)
 
+Default queue pacing settings:
+- `interItemDelayMs = 5000`
+- `interItemDelayJitterMs = 2000` (effective delay range is about `3..7s`)
+
 ### 4.3 Storage Model
 Durable data in `chrome.storage.local`:
 - `selectorRules`
 - `collectedLinks`
 - `collectorSettings`
+- `queueSettings`
 - `queueItems`
 - `queueRuntime`
 - `providerDiagnostics`
@@ -164,7 +169,8 @@ Durable data in `chrome.storage.local`:
 6. Engine calls provider orchestrator to save with snapshot behavior.
 7. Success path: mark `archived`, close tab, clear active runtime pointers, continue.
 8. Failure path: mark `failed` with `lastError`, close tab, clear active pointers, continue.
-9. If no pending items remain, runtime returns to `idle`.
+9. Between completed items, engine applies configurable pacing delay + jitter before opening the next pending item.
+10. If no pending items remain, runtime returns to `idle`.
 
 ### 5.4 Diagnostics Flow
 1. `GET_PANEL_STATE` refreshes provider diagnostics.
