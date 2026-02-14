@@ -105,7 +105,24 @@
           <input id="enable-connector-bridge-input" type="checkbox">
           <span>Enable connector bridge</span>
         </label>
-        <p id="integration-health" class="integration-health"></p>
+        <ul class="integration-status-list" aria-label="Integration status">
+          <li id="integration-bridge-row" class="integration-status-row" data-state="unknown">
+            <span class="integration-status-indicator" aria-hidden="true"></span>
+            <span class="integration-status-label">Connector bridge</span>
+            <span id="integration-bridge-status" class="integration-status-value">unknown</span>
+          </li>
+          <li id="integration-connector-row" class="integration-status-row" data-state="unknown">
+            <span class="integration-status-indicator" aria-hidden="true"></span>
+            <span class="integration-status-label">Connector extension</span>
+            <span id="integration-connector-status" class="integration-status-value">unknown</span>
+          </li>
+          <li id="integration-zotero-row" class="integration-status-row" data-state="unknown">
+            <span class="integration-status-indicator" aria-hidden="true"></span>
+            <span class="integration-status-label">Zotero app</span>
+            <span id="integration-zotero-status" class="integration-status-value">unknown</span>
+          </li>
+        </ul>
+        <p id="integration-error" class="integration-error" hidden></p>
       </section>
     </main>
 

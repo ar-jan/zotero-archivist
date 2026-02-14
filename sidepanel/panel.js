@@ -37,7 +37,13 @@ const retryFailedQueueButton = document.getElementById("retry-failed-queue-butto
 const rulesSummaryEl = document.getElementById("rules-summary");
 const enableConnectorBridgeInput = document.getElementById("enable-connector-bridge-input");
 const integrationModeEl = document.getElementById("integration-mode");
-const integrationHealthEl = document.getElementById("integration-health");
+const integrationBridgeRowEl = document.getElementById("integration-bridge-row");
+const integrationBridgeStatusEl = document.getElementById("integration-bridge-status");
+const integrationConnectorRowEl = document.getElementById("integration-connector-row");
+const integrationConnectorStatusEl = document.getElementById("integration-connector-status");
+const integrationZoteroRowEl = document.getElementById("integration-zotero-row");
+const integrationZoteroStatusEl = document.getElementById("integration-zotero-status");
+const integrationErrorEl = document.getElementById("integration-error");
 
 let selectorRulesDirty = false;
 let selectorRuleCounter = 0;
@@ -1155,34 +1161,21 @@ function renderIntegrationState() {
   integrationModeEl.textContent = `Mode: ${formatProviderModeLabel(providerDiagnosticsState.activeMode)}`;
 
   const connectorStatus = providerDiagnosticsState.connectorBridge;
-  const connectorHealthLabel =
-    connectorStatus.enabled === false
-      ? "disabled"
-      : connectorStatus.healthy === true
-        ? "available"
-        : "unavailable";
-  const connectorAvailabilityLabel = formatNullableBooleanLabel(
-    connectorStatus.connectorAvailable,
-    "available",
-    "unavailable"
-  );
-  const zoteroOnlineLabel = formatNullableBooleanLabel(
-    connectorStatus.zoteroOnline,
-    "online",
-    "offline"
-  );
+  const bridgeState = resolveBridgeDisplayState(connectorStatus);
+  const connectorState = resolveConnectorDisplayState(connectorStatus);
+  const zoteroState = resolveZoteroDisplayState(connectorStatus);
 
-  const summaryParts = [`Connector bridge: ${connectorHealthLabel}`];
-  if (connectorStatus.enabled) {
-    summaryParts.push(`Connector extension: ${connectorAvailabilityLabel}`);
-    summaryParts.push(`Zotero app: ${zoteroOnlineLabel}`);
-  }
-  summaryParts.push(connectorStatus.details);
+  setIntegrationStatusRow(integrationBridgeRowEl, integrationBridgeStatusEl, bridgeState);
+  setIntegrationStatusRow(integrationConnectorRowEl, integrationConnectorStatusEl, connectorState);
+  setIntegrationStatusRow(integrationZoteroRowEl, integrationZoteroStatusEl, zoteroState);
+
   if (typeof providerDiagnosticsState.lastError === "string" && providerDiagnosticsState.lastError.length > 0) {
-    summaryParts.push(providerDiagnosticsState.lastError);
+    integrationErrorEl.hidden = false;
+    integrationErrorEl.textContent = providerDiagnosticsState.lastError;
+  } else {
+    integrationErrorEl.hidden = true;
+    integrationErrorEl.textContent = "";
   }
-
-  integrationHealthEl.textContent = summaryParts.join(" • ");
 }
 
 function renderQueueRuntimeStatus(queueRuntime) {
@@ -1501,13 +1494,7 @@ function normalizeProviderDiagnostics(input) {
       enabled: connectorBridgeEnabled,
       healthy: connectorBridgeInput.healthy === true,
       connectorAvailable: normalizeNullableBoolean(connectorBridgeInput.connectorAvailable),
-      zoteroOnline: normalizeNullableBoolean(connectorBridgeInput.zoteroOnline),
-      details:
-        typeof connectorBridgeInput.details === "string" && connectorBridgeInput.details.trim().length > 0
-          ? connectorBridgeInput.details.trim()
-          : connectorBridgeEnabled
-            ? "Connector bridge status unknown."
-            : "Connector bridge is disabled."
+      zoteroOnline: normalizeNullableBoolean(connectorBridgeInput.zoteroOnline)
     },
     lastError:
       typeof input.lastError === "string" && input.lastError.trim().length > 0
@@ -1525,8 +1512,7 @@ function createDefaultProviderDiagnosticsState() {
       enabled: true,
       healthy: false,
       connectorAvailable: null,
-      zoteroOnline: null,
-      details: "Connector bridge status unknown."
+      zoteroOnline: null
     },
     lastError: null,
     updatedAt: Date.now()
@@ -1601,14 +1587,100 @@ function normalizeNullableBoolean(value) {
   return null;
 }
 
-function formatNullableBooleanLabel(value, trueLabel, falseLabel) {
-  if (value === true) {
-    return trueLabel;
+function resolveBridgeDisplayState(connectorStatus) {
+  if (!connectorStatus || connectorStatus.enabled !== true) {
+    return {
+      state: "disabled",
+      label: "disabled"
+    };
   }
-  if (value === false) {
-    return falseLabel;
+
+  if (connectorStatus.healthy === true) {
+    return {
+      state: "healthy",
+      label: "available"
+    };
   }
-  return "unknown";
+
+  return {
+    state: "unhealthy",
+    label: "unavailable"
+  };
+}
+
+function resolveConnectorDisplayState(connectorStatus) {
+  if (!connectorStatus || connectorStatus.enabled !== true) {
+    return {
+      state: "disabled",
+      label: "disabled"
+    };
+  }
+
+  if (connectorStatus.connectorAvailable === true) {
+    return {
+      state: "healthy",
+      label: "available"
+    };
+  }
+
+  if (connectorStatus.connectorAvailable === false) {
+    return {
+      state: "unhealthy",
+      label: "unavailable"
+    };
+  }
+
+  return {
+    state: "unknown",
+    label: "unknown"
+  };
+}
+
+function resolveZoteroDisplayState(connectorStatus) {
+  if (!connectorStatus || connectorStatus.enabled !== true) {
+    return {
+      state: "disabled",
+      label: "disabled"
+    };
+  }
+
+  if (connectorStatus.zoteroOnline === true) {
+    return {
+      state: "healthy",
+      label: "online"
+    };
+  }
+
+  if (connectorStatus.zoteroOnline === false) {
+    return {
+      state: "unhealthy",
+      label: "offline"
+    };
+  }
+
+  return {
+    state: "unknown",
+    label: "unknown"
+  };
+}
+
+function setIntegrationStatusRow(rowEl, valueEl, rowState) {
+  if (!(rowEl instanceof HTMLElement) || !(valueEl instanceof HTMLElement)) {
+    return;
+  }
+
+  const normalizedState =
+    rowState?.state === "healthy" ||
+    rowState?.state === "unhealthy" ||
+    rowState?.state === "unknown" ||
+    rowState?.state === "disabled"
+      ? rowState.state
+      : "unknown";
+
+  rowEl.dataset.state = normalizedState;
+  valueEl.textContent = typeof rowState?.label === "string" && rowState.label.length > 0
+    ? rowState.label
+    : "unknown";
 }
 
 function setStatus(message) {

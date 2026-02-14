@@ -803,11 +803,12 @@ async function closeTabIfPresent(tabId) {
 }
 
 async function saveQueueItemWithProvider({ queueItem, tabId }) {
-  const { provider, diagnostics } = await resolveSaveProvider({ tabId });
+  const { provider, diagnostics, unavailableReason } = await resolveSaveProvider({ tabId });
   if (!provider || typeof provider.saveWebPageWithSnapshot !== "function") {
-    const unavailableMessage = diagnostics.connectorBridge.enabled
-      ? `Connector bridge is unavailable. ${diagnostics.connectorBridge.details}`
-      : CONNECTOR_BRIDGE_DISABLED_MESSAGE;
+    const unavailableMessage = formatConnectorBridgeUnavailableMessage(
+      diagnostics.connectorBridge,
+      unavailableReason
+    );
     await saveProviderDiagnostics({
       ...diagnostics,
       lastError: unavailableMessage,
@@ -868,6 +869,7 @@ async function resolveSaveProvider({ tabId = null } = {}) {
   const providerSettings = await getProviderSettings();
   let activeProvider = null;
   let connectorHealth = null;
+  let connectorHealthMessage = null;
 
   if (providerSettings.connectorBridgeEnabled) {
     const connectorBridgeProvider = createConnectorBridgeProvider();
@@ -876,23 +878,21 @@ async function resolveSaveProvider({ tabId = null } = {}) {
     } catch (error) {
       connectorHealth = {
         ok: false,
-        details: `Connector bridge health check failed: ${String(error)}`,
+        message: `Connector bridge health check failed: ${String(error)}`,
         connectorAvailable: null,
         zoteroOnline: null
       };
     }
 
+    connectorHealthMessage = normalizeConnectorHealthMessage(
+      connectorHealth?.message,
+      "Connector bridge health check returned no status message."
+    );
+
     if (connectorHealth.ok === true) {
       activeProvider = connectorBridgeProvider;
     }
   }
-
-  const connectorDetails = providerSettings.connectorBridgeEnabled
-    ? normalizeDetailsText(
-        connectorHealth?.details,
-        "Connector bridge health check returned no details."
-      )
-    : CONNECTOR_BRIDGE_DISABLED_MESSAGE;
 
   const diagnostics = {
     activeMode: activeProvider?.mode ?? "connector_bridge",
@@ -910,8 +910,7 @@ async function resolveSaveProvider({ tabId = null } = {}) {
           ? true
           : connectorHealth?.zoteroOnline === false
             ? false
-            : null,
-      details: connectorDetails
+            : null
     },
     lastError: null,
     updatedAt: Date.now()
@@ -921,7 +920,8 @@ async function resolveSaveProvider({ tabId = null } = {}) {
 
   return {
     provider: activeProvider,
-    diagnostics
+    diagnostics,
+    unavailableReason: connectorHealthMessage
   };
 }
 
@@ -930,12 +930,33 @@ async function refreshProviderDiagnostics(_reason) {
   return diagnostics;
 }
 
-function normalizeDetailsText(details, fallback) {
-  if (typeof details === "string" && details.trim().length > 0) {
-    return details.trim();
+function normalizeConnectorHealthMessage(message, fallback) {
+  if (typeof message === "string" && message.trim().length > 0) {
+    return message.trim();
   }
 
   return fallback;
+}
+
+function formatConnectorBridgeUnavailableMessage(connectorBridge, reason) {
+  if (!connectorBridge || connectorBridge.enabled !== true) {
+    return CONNECTOR_BRIDGE_DISABLED_MESSAGE;
+  }
+
+  const normalizedReason = normalizeConnectorHealthMessage(reason, "");
+  if (normalizedReason.length > 0) {
+    return `Connector bridge is unavailable. ${normalizedReason}`;
+  }
+
+  if (connectorBridge.connectorAvailable === false) {
+    return "Connector bridge is unavailable. Zotero Connector extension is unavailable.";
+  }
+
+  if (connectorBridge.zoteroOnline === false) {
+    return "Connector bridge is unavailable. Zotero app appears to be offline.";
+  }
+
+  return "Connector bridge is unavailable.";
 }
 
 async function getSelectorRules() {

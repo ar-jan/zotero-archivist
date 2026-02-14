@@ -604,8 +604,59 @@ body {
   margin-bottom: 8px;
 }
 
-.integration-health {
-  color: #555;
-  font-size: 0.78rem;
+.integration-status-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
   margin: 0;
+  padding: 0;
+}
+
+.integration-status-row {
+  align-items: center;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto 1fr auto;
+  padding: 6px 8px;
+}
+
+.integration-status-indicator {
+  background: #9aa0a6;
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+.integration-status-row[data-state="healthy"] .integration-status-indicator {
+  background: #1d6d3f;
+}
+
+.integration-status-row[data-state="unhealthy"] .integration-status-indicator {
+  background: #8c1d1d;
+}
+
+.integration-status-row[data-state="unknown"] .integration-status-indicator {
+  background: #7a4e0a;
+}
+
+.integration-status-row[data-state="disabled"] .integration-status-indicator {
+  background: #666;
+}
+
+.integration-status-label {
+  color: #444;
+  font-size: 0.79rem;
+}
+
+.integration-status-value {
+  font-size: 0.79rem;
+  font-weight: 700;
+}
+
+.integration-error {
+  color: #7a4e0a;
+  font-size: 0.78rem;
+  margin: 8px 0 0;
 }

@@ -20,10 +20,7 @@ export function createDefaultProviderDiagnostics() {
       enabled: DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled,
       healthy: false,
       connectorAvailable: null,
-      zoteroOnline: null,
-      details: DEFAULT_PROVIDER_SETTINGS.connectorBridgeEnabled
-        ? "Connector bridge status unknown."
-        : "Connector bridge is disabled."
+      zoteroOnline: null
     },
     lastError: null,
     updatedAt: Date.now()
@@ -81,8 +78,7 @@ function normalizeConnectorBridgeDiagnostics(input) {
       enabled: defaultEnabled,
       healthy: false,
       connectorAvailable: null,
-      zoteroOnline: null,
-      details: defaultEnabled ? "Connector bridge status unknown." : "Connector bridge is disabled."
+      zoteroOnline: null
     };
   }
 
@@ -91,13 +87,7 @@ function normalizeConnectorBridgeDiagnostics(input) {
     enabled,
     healthy: input.healthy === true,
     connectorAvailable: normalizeNullableBoolean(input.connectorAvailable),
-    zoteroOnline: normalizeNullableBoolean(input.zoteroOnline),
-    details:
-      typeof input.details === "string" && input.details.trim().length > 0
-        ? input.details.trim()
-        : enabled
-          ? "Connector bridge status unknown."
-          : "Connector bridge is disabled."
+    zoteroOnline: normalizeNullableBoolean(input.zoteroOnline)
   };
 }
 

@@ -28,7 +28,7 @@ export function createConnectorBridgeProvider() {
       if (!probeTarget.ok) {
         return createConnectorHealthResult({
           ok: false,
-          details: probeTarget.details,
+          message: probeTarget.message,
           connectorAvailable: null,
           zoteroOnline: null
         });
@@ -43,7 +43,7 @@ export function createConnectorBridgeProvider() {
         if (isConnectorUnavailableError(probeResult.error)) {
           return createConnectorHealthResult({
             ok: false,
-            details: CONNECTOR_EXTENSION_UNAVAILABLE_MESSAGE,
+            message: CONNECTOR_EXTENSION_UNAVAILABLE_MESSAGE,
             connectorAvailable: false,
             zoteroOnline: null
           });
@@ -51,7 +51,7 @@ export function createConnectorBridgeProvider() {
 
         return createConnectorHealthResult({
           ok: false,
-          details: `Connector bridge probe failed: ${probeResult.error}`,
+          message: `Connector bridge probe failed: ${probeResult.error}`,
           connectorAvailable: null,
           zoteroOnline: null
         });
@@ -60,7 +60,7 @@ export function createConnectorBridgeProvider() {
       if (probeResult.result !== true) {
         return createConnectorHealthResult({
           ok: false,
-          details: CONNECTOR_OFFLINE_HEALTH_MESSAGE,
+          message: CONNECTOR_OFFLINE_HEALTH_MESSAGE,
           connectorAvailable: true,
           zoteroOnline: false
         });
@@ -68,7 +68,7 @@ export function createConnectorBridgeProvider() {
 
       return createConnectorHealthResult({
         ok: true,
-        details: CONNECTOR_HEALTHY_MESSAGE,
+        message: CONNECTOR_HEALTHY_MESSAGE,
         connectorAvailable: true,
         zoteroOnline: true
       });
@@ -143,10 +143,10 @@ export function createConnectorBridgeProvider() {
   };
 }
 
-function createConnectorHealthResult({ ok, details, connectorAvailable = null, zoteroOnline = null }) {
+function createConnectorHealthResult({ ok, message, connectorAvailable = null, zoteroOnline = null }) {
   return {
     ok,
-    details,
+    message,
     connectorAvailable,
     zoteroOnline
   };
@@ -169,7 +169,7 @@ async function resolveBridgeProbeTarget(preferredTabId) {
 
   return {
     ok: false,
-    details: CONNECTOR_PROBE_TAB_REQUIRED_MESSAGE
+    message: CONNECTOR_PROBE_TAB_REQUIRED_MESSAGE
   };
 }
 
@@ -180,14 +180,14 @@ async function resolveProbeTargetFromTabId(tabId) {
   } catch (_error) {
     return {
       ok: false,
-      details: "Connector probe tab is no longer available."
+      message: "Connector probe tab is no longer available."
     };
   }
 
   if (!isHttpProbeUrl(tab?.url)) {
     return {
       ok: false,
-      details: "Connector probe tab must use an http(s) URL."
+      message: "Connector probe tab must use an http(s) URL."
     };
   }
 
@@ -195,7 +195,7 @@ async function resolveProbeTargetFromTabId(tabId) {
   if (!hasPermission) {
     return {
       ok: false,
-      details: "Connector probe tab does not currently have granted site access."
+      message: "Connector probe tab does not currently have granted site access."
     };
   }
 
