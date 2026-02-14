@@ -1,7 +1,6 @@
 import { SAVE_PROVIDER_MODES } from "../shared/protocol.js";
 import {
   createProviderSaveSuccess,
-  createProviderSaveManual,
   createProviderSaveError
 } from "./provider-interface.js";
 
@@ -12,8 +11,6 @@ const BRIDGE_SAVE_TIMEOUT_MS = 120000;
 const BRIDGE_DEFAULT_FRAME_TIMEOUT_MS = 8000;
 const CONNECTOR_OFFLINE_MESSAGE =
   "Zotero Connector reports the local Zotero client as offline for bridge save.";
-const BRIDGE_UNCONFIRMED_SAVE_MESSAGE =
-  "Connector bridge did not confirm a completed save. Verify save in Zotero and mark manually.";
 
 export function createConnectorBridgeProvider() {
   return {
@@ -115,10 +112,6 @@ export function createConnectorBridgeProvider() {
         return createProviderSaveError(`Connector bridge save failed: ${saveResult.error}`);
       }
 
-      if (!isConfirmedSaveResult(saveResult.result)) {
-        return createProviderSaveManual(BRIDGE_UNCONFIRMED_SAVE_MESSAGE);
-      }
-
       return createProviderSaveSuccess();
     }
   };
@@ -200,34 +193,6 @@ function normalizeTimeoutMs(timeoutMs) {
   }
 
   return Math.max(1000, Math.trunc(timeoutMs));
-}
-
-function isConfirmedSaveResult(result) {
-  if (result === null || result === undefined) {
-    return false;
-  }
-
-  if (typeof result === "boolean") {
-    return result;
-  }
-
-  if (Array.isArray(result)) {
-    return true;
-  }
-
-  if (typeof result === "object") {
-    return true;
-  }
-
-  if (typeof result === "string") {
-    return result.trim().length > 0;
-  }
-
-  if (typeof result === "number") {
-    return Number.isFinite(result);
-  }
-
-  return false;
 }
 
 async function executeConnectorBridgeCommandInTab(input) {
