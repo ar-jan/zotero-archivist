@@ -9,6 +9,12 @@ import {
   sanitizeSelectorRules,
   toOriginPattern
 } from "../shared/protocol.js";
+import {
+  normalizeProviderDiagnostics,
+  normalizeProviderSettings
+} from "../zotero/provider-interface.js";
+import { createConnectorBridgeProvider } from "../zotero/provider-connector-bridge.js";
+import { createManualProvider } from "../zotero/provider-manual.js";
 
 const QUEUE_ITEM_STATUSES = new Set([
   "pending",
@@ -26,7 +32,13 @@ const QUEUE_ALARM_NAME = "queue-engine-watchdog";
 const QUEUE_ALARM_DELAY_MINUTES = 1;
 const QUEUE_TAB_LOAD_TIMEOUT_MESSAGE = "Queue tab did not finish loading before timeout.";
 const QUEUE_TAB_CLOSED_MESSAGE = "Queue tab was closed before loading completed.";
-const QUEUE_MANUAL_PROVIDER_MESSAGE = "Manual save provider is not implemented yet.";
+const QUEUE_MANUAL_PROVIDER_MESSAGE =
+  "Use the Zotero Connector save action on this tab, then confirm the result in Zotero Archivist.";
+const QUEUE_MANUAL_FAILED_DEFAULT_MESSAGE =
+  "Manual save was marked as failed by the user.";
+const CONNECTOR_BRIDGE_DISABLED_MESSAGE = "Connector bridge is disabled.";
+const CONNECTOR_BRIDGE_FALLBACK_MESSAGE =
+  "Connector bridge is unavailable. Falling back to manual provider.";
 
 let queueEngineRun = Promise.resolve();
 
@@ -66,7 +78,13 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 async function initializeExtensionState() {
-  await Promise.all([ensureSelectorRules(), ensureQueueItems(), ensureQueueRuntime()]);
+  await Promise.all([
+    ensureSelectorRules(),
+    ensureQueueItems(),
+    ensureQueueRuntime(),
+    ensureProviderSettings(),
+    ensureProviderDiagnostics()
+  ]);
   await configureSidePanelBehavior();
   await recoverQueueEngineState();
 }
@@ -97,6 +115,10 @@ async function handleMessage(message, _sender) {
       return stopQueue();
     case MESSAGE_TYPES.RETRY_FAILED_QUEUE:
       return retryFailedQueue();
+    case MESSAGE_TYPES.SET_PROVIDER_SETTINGS:
+      return setProviderSettings(message.payload?.settings);
+    case MESSAGE_TYPES.RESOLVE_MANUAL_QUEUE_ITEM:
+      return resolveManualQueueItem(message.payload);
     case MESSAGE_TYPES.SET_SELECTOR_RULES:
       return setSelectorRules(message.payload?.rules);
     default:
@@ -118,6 +140,8 @@ async function getPanelState() {
   const selectorRules = await getSelectorRules();
   const queueItems = await getQueueItems();
   const queueRuntime = await getQueueRuntime();
+  const providerSettings = await getProviderSettings();
+  const providerDiagnostics = await getProviderDiagnostics();
   const stored = await chrome.storage.local.get(STORAGE_KEYS.COLLECTED_LINKS);
   const collectedLinks = normalizeCollectedLinks(stored[STORAGE_KEYS.COLLECTED_LINKS]);
 
@@ -131,7 +155,9 @@ async function getPanelState() {
     selectorRules,
     collectedLinks,
     queueItems,
-    queueRuntime
+    queueRuntime,
+    providerSettings,
+    providerDiagnostics
   };
 }
 
@@ -267,6 +293,16 @@ async function clearQueue() {
     return createError(ERROR_CODES.BAD_REQUEST, "Stop or pause the queue before clearing it.");
   }
 
+  const queueItems = await getQueueItems();
+  for (const queueItem of queueItems) {
+    if (Number.isInteger(queueItem.manualTabId)) {
+      await closeTabIfPresent(queueItem.manualTabId);
+    }
+  }
+  if (Number.isInteger(queueRuntime.activeTabId)) {
+    await closeTabIfPresent(queueRuntime.activeTabId);
+  }
+
   await saveQueueItems([]);
   const nextRuntime = {
     ...clearQueueRuntimeActive(queueRuntime),
@@ -365,6 +401,7 @@ async function resumeQueue() {
 async function stopQueue() {
   const queueRuntime = await getQueueRuntime();
   const queueItems = await getQueueItems();
+  const activeTabId = Number.isInteger(queueRuntime.activeTabId) ? queueRuntime.activeTabId : null;
 
   let nextQueueItems = queueItems;
   if (typeof queueRuntime.activeQueueItemId === "string") {
@@ -388,6 +425,9 @@ async function stopQueue() {
   };
   await saveQueueRuntime(nextRuntime);
   await clearQueueAlarm();
+  if (activeTabId !== null) {
+    await closeTabIfPresent(activeTabId);
+  }
 
   return createSuccess({
     queueRuntime: nextRuntime,
@@ -413,6 +453,7 @@ async function retryFailedQueue() {
       ...item,
       status: "pending",
       updatedAt: Date.now(),
+      manualTabId: null,
       lastError: undefined
     };
   });
@@ -427,6 +468,86 @@ async function retryFailedQueue() {
     queueItems: nextQueueItems,
     queueRuntime,
     retriedCount
+  });
+}
+
+async function setProviderSettings(rawSettings) {
+  if (!rawSettings || typeof rawSettings !== "object") {
+    return createError(ERROR_CODES.INVALID_PROVIDER_SETTINGS, "Invalid provider settings payload.");
+  }
+
+  const providerSettings = normalizeProviderSettings(rawSettings);
+  await saveProviderSettings(providerSettings);
+  const providerDiagnostics = await refreshProviderDiagnostics("settings-updated");
+
+  return createSuccess({
+    providerSettings,
+    providerDiagnostics
+  });
+}
+
+async function resolveManualQueueItem(payload) {
+  const queueItemId =
+    typeof payload?.queueItemId === "string" && payload.queueItemId.trim().length > 0
+      ? payload.queueItemId.trim()
+      : null;
+  const outcome = payload?.outcome;
+  const failureMessage =
+    typeof payload?.failureMessage === "string" && payload.failureMessage.trim().length > 0
+      ? payload.failureMessage.trim()
+      : QUEUE_MANUAL_FAILED_DEFAULT_MESSAGE;
+
+  if (!queueItemId || (outcome !== "saved" && outcome !== "failed")) {
+    return createError(
+      ERROR_CODES.BAD_REQUEST,
+      "Manual queue resolution requires queueItemId and outcome (saved|failed)."
+    );
+  }
+
+  const queueItems = await getQueueItems();
+  const queueItemIndex = queueItems.findIndex((item) => item.id === queueItemId);
+  if (queueItemIndex < 0) {
+    return createError(ERROR_CODES.QUEUE_ITEM_NOT_FOUND, "Queue item was not found.");
+  }
+
+  const queueItem = queueItems[queueItemIndex];
+  if (queueItem.status !== "manual_required") {
+    return createError(ERROR_CODES.BAD_REQUEST, "Queue item is not waiting for manual confirmation.");
+  }
+
+  const nextQueueItems = [...queueItems];
+  nextQueueItems[queueItemIndex] = {
+    ...queueItem,
+    status: outcome === "saved" ? "archived" : "failed",
+    updatedAt: Date.now(),
+    manualTabId: null,
+    lastError: outcome === "saved" ? undefined : failureMessage
+  };
+  await saveQueueItems(nextQueueItems);
+
+  if (Number.isInteger(queueItem.manualTabId)) {
+    await closeTabIfPresent(queueItem.manualTabId);
+  }
+
+  const pendingCount = nextQueueItems.filter((item) => item.status === "pending").length;
+  const manualRequiredCount = nextQueueItems.filter((item) => item.status === "manual_required").length;
+  const nextRuntimeStatus =
+    pendingCount > 0 ? "running" : manualRequiredCount > 0 ? "paused" : "idle";
+  const nextRuntime = {
+    ...clearQueueRuntimeActive(await getQueueRuntime()),
+    status: nextRuntimeStatus,
+    updatedAt: Date.now()
+  };
+  await saveQueueRuntime(nextRuntime);
+  await clearQueueAlarm();
+
+  if (nextRuntime.status === "running") {
+    runQueueEngineSoon("manual-resolution");
+  }
+
+  return createSuccess({
+    queueItems: nextQueueItems,
+    queueRuntime: nextRuntime
   });
 }
 
@@ -477,7 +598,8 @@ async function runQueueEngine(_trigger) {
       return;
     }
 
-    const activeTabState = await getQueueTabState(queueRuntime.activeTabId);
+    const activeTabId = queueRuntime.activeTabId;
+    const activeTabState = await getQueueTabState(activeTabId);
     if (activeTabState === "loading") {
       await scheduleQueueAlarm();
       return;
@@ -498,26 +620,95 @@ async function runQueueEngine(_trigger) {
     }
 
     queueItems = [...queueItems];
-    queueItems[activeIndex] = {
+    const itemForSave = {
       ...queueItems[activeIndex],
       status: "saving_snapshot",
       updatedAt: Date.now()
     };
-    queueItems[activeIndex] = {
-      ...queueItems[activeIndex],
-      status: "manual_required",
-      lastError: QUEUE_MANUAL_PROVIDER_MESSAGE,
-      updatedAt: Date.now()
-    };
+    queueItems[activeIndex] = itemForSave;
     await saveQueueItems(queueItems);
 
+    const saveResult = await saveQueueItemWithProvider({
+      queueItem: itemForSave,
+      tabId: activeTabId
+    });
+
+    queueItems = await getQueueItems();
+    const refreshedActiveIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
+    if (refreshedActiveIndex < 0) {
+      queueRuntime = {
+        ...clearQueueRuntimeActive(await getQueueRuntime()),
+        updatedAt: Date.now()
+      };
+      await saveQueueRuntime(queueRuntime);
+      await clearQueueAlarm();
+      return;
+    }
+
+    const nextQueueItems = [...queueItems];
+    if (saveResult.ok) {
+      nextQueueItems[refreshedActiveIndex] = {
+        ...nextQueueItems[refreshedActiveIndex],
+        status: "archived",
+        updatedAt: Date.now(),
+        manualTabId: null,
+        lastError: undefined
+      };
+      await saveQueueItems(nextQueueItems);
+      await closeTabIfPresent(activeTabId);
+
+      queueRuntime = {
+        ...clearQueueRuntimeActive(await getQueueRuntime()),
+        updatedAt: Date.now()
+      };
+      await saveQueueRuntime(queueRuntime);
+      await clearQueueAlarm();
+      runQueueEngineSoon("save-success");
+      return;
+    }
+
+    if (saveResult.requiresManual) {
+      nextQueueItems[refreshedActiveIndex] = {
+        ...nextQueueItems[refreshedActiveIndex],
+        status: "manual_required",
+        updatedAt: Date.now(),
+        manualTabId: activeTabId,
+        lastError:
+          typeof saveResult.details === "string" && saveResult.details.length > 0
+            ? saveResult.details
+            : QUEUE_MANUAL_PROVIDER_MESSAGE
+      };
+      await saveQueueItems(nextQueueItems);
+
+      queueRuntime = {
+        ...clearQueueRuntimeActive(await getQueueRuntime()),
+        status: "paused",
+        updatedAt: Date.now()
+      };
+      await saveQueueRuntime(queueRuntime);
+      await clearQueueAlarm();
+      return;
+    }
+
+    nextQueueItems[refreshedActiveIndex] = {
+      ...markQueueItemFailed(
+        nextQueueItems[refreshedActiveIndex],
+        typeof saveResult.error === "string" && saveResult.error.length > 0
+          ? saveResult.error
+          : "Snapshot save failed."
+      ),
+      manualTabId: null
+    };
+    await saveQueueItems(nextQueueItems);
+    await closeTabIfPresent(activeTabId);
+
     queueRuntime = {
-      ...clearQueueRuntimeActive(queueRuntime),
-      status: "paused",
+      ...clearQueueRuntimeActive(await getQueueRuntime()),
       updatedAt: Date.now()
     };
     await saveQueueRuntime(queueRuntime);
     await clearQueueAlarm();
+    runQueueEngineSoon("save-failed");
     return;
   }
 
@@ -545,6 +736,7 @@ async function runQueueEngine(_trigger) {
     ...nextQueueItems[nextItemIndex],
     status: "opening_tab",
     attempts: nextQueueItems[nextItemIndex].attempts + 1,
+    manualTabId: null,
     updatedAt: Date.now()
   };
   nextQueueItems[nextItemIndex] = itemToRun;
@@ -605,6 +797,10 @@ async function handleQueueAlarm() {
           activeTabState === "loading" ? QUEUE_TAB_LOAD_TIMEOUT_MESSAGE : QUEUE_TAB_CLOSED_MESSAGE
         );
         await saveQueueItems(nextQueueItems);
+      }
+
+      if (activeTabState === "loading") {
+        await closeTabIfPresent(queueRuntime.activeTabId);
       }
 
       const nextRuntime = {
@@ -700,6 +896,157 @@ async function getQueueTabState(tabId) {
   }
 }
 
+async function closeTabIfPresent(tabId) {
+  if (!Number.isInteger(tabId)) {
+    return;
+  }
+
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch (_error) {
+    // Tab may already be closed.
+  }
+}
+
+async function saveQueueItemWithProvider({ queueItem, tabId }) {
+  const { provider, diagnostics } = await resolveSaveProvider();
+  if (!provider || typeof provider.saveWebPageWithSnapshot !== "function") {
+    const unavailableMessage = "No save provider is available.";
+    await saveProviderDiagnostics({
+      ...diagnostics,
+      lastError: unavailableMessage,
+      updatedAt: Date.now()
+    });
+    return {
+      ok: false,
+      error: unavailableMessage
+    };
+  }
+
+  let providerResult;
+  try {
+    providerResult = await provider.saveWebPageWithSnapshot({
+      tabId,
+      url: queueItem.url,
+      title: queueItem.title
+    });
+  } catch (error) {
+    const thrownMessage = `Provider ${provider.mode} threw: ${String(error)}`;
+    await saveProviderDiagnostics({
+      ...diagnostics,
+      lastError: thrownMessage,
+      updatedAt: Date.now()
+    });
+    return {
+      ok: false,
+      error: thrownMessage
+    };
+  }
+
+  if (providerResult?.ok === true) {
+    await saveProviderDiagnostics({
+      ...diagnostics,
+      updatedAt: Date.now()
+    });
+    return {
+      ok: true
+    };
+  }
+
+  if (providerResult?.requiresManual === true) {
+    await saveProviderDiagnostics({
+      ...diagnostics,
+      updatedAt: Date.now()
+    });
+    return {
+      ok: false,
+      requiresManual: true,
+      details:
+        typeof providerResult.details === "string" && providerResult.details.length > 0
+          ? providerResult.details
+          : QUEUE_MANUAL_PROVIDER_MESSAGE
+    };
+  }
+
+  const providerError =
+    typeof providerResult?.error === "string" && providerResult.error.length > 0
+      ? providerResult.error
+      : `Provider ${provider.mode} failed to save the page.`;
+  await saveProviderDiagnostics({
+    ...diagnostics,
+    lastError: providerError,
+    updatedAt: Date.now()
+  });
+  return {
+    ok: false,
+    error: providerError
+  };
+}
+
+async function resolveSaveProvider() {
+  const providerSettings = await getProviderSettings();
+  const manualProvider = createManualProvider();
+  let activeProvider = manualProvider;
+  let connectorHealth = null;
+  let fallbackMessage = null;
+
+  if (providerSettings.connectorBridgeEnabled) {
+    const connectorBridgeProvider = createConnectorBridgeProvider();
+    try {
+      connectorHealth = await connectorBridgeProvider.checkHealth();
+    } catch (error) {
+      connectorHealth = {
+        ok: false,
+        details: `Connector bridge health check failed: ${String(error)}`
+      };
+    }
+
+    if (connectorHealth.ok === true) {
+      activeProvider = connectorBridgeProvider;
+    } else {
+      fallbackMessage = CONNECTOR_BRIDGE_FALLBACK_MESSAGE;
+    }
+  }
+
+  const connectorDetails = providerSettings.connectorBridgeEnabled
+    ? normalizeDetailsText(
+        connectorHealth?.details,
+        "Connector bridge health check returned no details."
+      )
+    : CONNECTOR_BRIDGE_DISABLED_MESSAGE;
+
+  const diagnostics = {
+    activeMode: activeProvider.mode,
+    connectorBridge: {
+      enabled: providerSettings.connectorBridgeEnabled,
+      healthy: providerSettings.connectorBridgeEnabled && connectorHealth?.ok === true,
+      details: connectorDetails
+    },
+    lastError: fallbackMessage,
+    updatedAt: Date.now()
+  };
+
+  await saveProviderDiagnostics(diagnostics);
+
+  return {
+    provider: activeProvider,
+    diagnostics
+  };
+}
+
+async function refreshProviderDiagnostics(_reason) {
+  const { diagnostics } = await resolveSaveProvider();
+  return diagnostics;
+}
+
+function normalizeDetailsText(details, fallback) {
+  if (typeof details === "string" && details.trim().length > 0) {
+    return details.trim();
+  }
+
+  return fallback;
+}
+
 async function getSelectorRules() {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.SELECTOR_RULES);
   const rawRules = stored[STORAGE_KEYS.SELECTOR_RULES];
@@ -765,6 +1112,58 @@ async function ensureQueueItems() {
 
 async function ensureQueueRuntime() {
   await getQueueRuntime();
+}
+
+async function ensureProviderSettings() {
+  await getProviderSettings();
+}
+
+async function ensureProviderDiagnostics() {
+  await getProviderDiagnostics();
+  await refreshProviderDiagnostics("startup");
+}
+
+async function getProviderSettings() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.PROVIDER_SETTINGS);
+  const rawProviderSettings = stored[STORAGE_KEYS.PROVIDER_SETTINGS];
+  const providerSettings = normalizeProviderSettings(rawProviderSettings);
+
+  const needsWriteBack =
+    !rawProviderSettings || JSON.stringify(rawProviderSettings) !== JSON.stringify(providerSettings);
+  if (needsWriteBack) {
+    await saveProviderSettings(providerSettings);
+  }
+
+  return providerSettings;
+}
+
+async function saveProviderSettings(providerSettings) {
+  const normalized = normalizeProviderSettings(providerSettings);
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.PROVIDER_SETTINGS]: normalized
+  });
+}
+
+async function getProviderDiagnostics() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.PROVIDER_DIAGNOSTICS);
+  const rawProviderDiagnostics = stored[STORAGE_KEYS.PROVIDER_DIAGNOSTICS];
+  const providerDiagnostics = normalizeProviderDiagnostics(rawProviderDiagnostics);
+
+  const needsWriteBack =
+    !rawProviderDiagnostics ||
+    JSON.stringify(rawProviderDiagnostics) !== JSON.stringify(providerDiagnostics);
+  if (needsWriteBack) {
+    await saveProviderDiagnostics(providerDiagnostics);
+  }
+
+  return providerDiagnostics;
+}
+
+async function saveProviderDiagnostics(providerDiagnostics) {
+  const normalized = normalizeProviderDiagnostics(providerDiagnostics);
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.PROVIDER_DIAGNOSTICS]: normalized
+  });
 }
 
 async function getQueueItems() {
@@ -926,6 +1325,10 @@ function normalizeQueueItems(input) {
       queueItem.lastError = candidate.lastError.trim();
     }
 
+    if (Number.isInteger(candidate.manualTabId)) {
+      queueItem.manualTabId = candidate.manualTabId;
+    }
+
     normalized.push(queueItem);
   }
 
@@ -989,6 +1392,7 @@ function markQueueItemFailed(queueItem, message) {
     ...queueItem,
     status: "failed",
     lastError: message,
+    manualTabId: null,
     updatedAt: Date.now()
   };
 }

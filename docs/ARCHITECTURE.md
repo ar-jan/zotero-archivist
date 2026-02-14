@@ -196,11 +196,12 @@ State transitions:
 2. `saving_snapshot -> manual_required` on unsupported provider errors
 3. Any active state -> `failed` on terminal error/timeout
 
-Current Phase 2 behavior (2026-02-14):
+Current Phase 3 behavior (2026-02-14):
 
 1. Queue controls (`start`, `pause`, `resume`, `stop`, `retry failed`) are wired in the side panel and background runtime.
-2. `pending -> opening_tab -> saving_snapshot -> manual_required` is currently the expected flow until Phase 3 save providers land.
-3. When `manual_required` is reached, queue runtime transitions to `paused` and waits for user action.
+2. `pending -> opening_tab -> saving_snapshot` now routes through provider orchestration in background.
+3. Manual provider is the current stable path and transitions items to `manual_required` with explicit side-panel confirmation actions.
+4. Connector bridge is feature-flagged and health-checked; when unavailable, runtime automatically falls back to manual mode.
 
 ## 9) URL Collection Flow
 

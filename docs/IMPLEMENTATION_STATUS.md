@@ -37,11 +37,16 @@ Last updated: 2026-02-14
 - [x] Phase 1: Implement queue authoring from selected links.
 - [x] Phase 2: Implement MV3-safe queue engine with persisted state transitions.
 - [ ] Phase 3: Implement save providers (manual first, connector bridge behind feature flag).
+  - [x] Manual provider baseline implemented with explicit `manual_required` confirmation workflow.
+  - [x] Provider settings + diagnostics storage added (`providerSettings`, `providerDiagnostics`).
+  - [x] Connector bridge feature flag + health check + automatic fallback to manual provider wired.
+  - [ ] Connector bridge snapshot save command against Zotero internal bridge is still pending.
 - [ ] Phase 4: Add diagnostics, contract tests, and hardening.
 
-## Phase 2 Notes (Current)
+## Phase 3 Notes (Current)
 
-- Added queue lifecycle controls in side panel: `Start`, `Pause`, `Resume`, `Stop`, `Retry Failed`.
-- Added queue runtime persistence in `chrome.storage.local` (`queueRuntime`) with restart-safe state recovery.
-- Added queue progression via `tabs.onUpdated` and `tabs.onRemoved`, plus `chrome.alarms` watchdog handling.
-- Current queue processing intentionally pauses at `manual_required` because save providers are Phase 3 work.
+- Queue save step now uses provider selection instead of hardcoded pause logic.
+- Manual provider now opens/activates the queue tab, sets queue item to `manual_required`, and waits for user confirmation.
+- Side panel now includes per-item `Mark Saved` / `Mark Failed` actions to complete manual-required queue items and continue queue progression.
+- Added integration section in side panel with connector-bridge experimental toggle and live provider diagnostics.
+- Connector bridge provider is currently a guarded placeholder that reports unavailable and falls back to manual mode.

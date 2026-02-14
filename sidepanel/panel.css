@@ -455,8 +455,45 @@ body {
 }
 
 .queue-item-meta {
+  display: grid;
+  gap: 4px;
   color: #666;
   font-size: 0.76rem;
+}
+
+.queue-item-error {
+  color: #7a4e0a;
+}
+
+.queue-manual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.queue-manual-button {
+  border: 1px solid #888;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  font-size: 0.76rem;
+  padding: 4px 8px;
+}
+
+.queue-manual-button-success {
+  border-color: #1d6d3f;
+  color: #1d6d3f;
+}
+
+.queue-manual-button-failed {
+  border-color: #8c1d1d;
+  color: #8c1d1d;
+}
+
+.queue-manual-button[disabled] {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .queue-empty {
@@ -465,4 +502,42 @@ body {
   color: #666;
   font-size: 0.82rem;
   padding: 8px;
+}
+
+.integration {
+  border-top: 1px solid #ddd;
+  padding-top: 10px;
+}
+
+.integration-header {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.integration h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.integration-mode {
+  color: #666;
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.integration-toggle {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  font-size: 0.82rem;
+  margin-bottom: 8px;
+}
+
+.integration-health {
+  color: #555;
+  font-size: 0.78rem;
+  margin: 0;
 }

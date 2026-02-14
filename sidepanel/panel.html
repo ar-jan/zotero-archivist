@@ -70,6 +70,18 @@
         <p id="queue-runtime-status" class="queue-runtime-status"></p>
         <ul id="queue-list" class="queue-list"></ul>
       </section>
+
+      <section class="integration" aria-live="polite">
+        <div class="integration-header">
+          <h2>Integration</h2>
+          <p id="integration-mode" class="integration-mode"></p>
+        </div>
+        <label class="integration-toggle">
+          <input id="enable-connector-bridge-input" type="checkbox">
+          <span>Enable connector bridge (experimental)</span>
+        </label>
+        <p id="integration-health" class="integration-health"></p>
+      </section>
     </main>
 
     <script type="module" src="panel.js"></script>

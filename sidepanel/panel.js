@@ -30,17 +30,24 @@ const resumeQueueButton = document.getElementById("resume-queue-button");
 const stopQueueButton = document.getElementById("stop-queue-button");
 const retryFailedQueueButton = document.getElementById("retry-failed-queue-button");
 const rulesSummaryEl = document.getElementById("rules-summary");
+const enableConnectorBridgeInput = document.getElementById("enable-connector-bridge-input");
+const integrationModeEl = document.getElementById("integration-mode");
+const integrationHealthEl = document.getElementById("integration-health");
 
 let selectorRulesDirty = false;
 let selectorRuleCounter = 0;
 let collectedLinksState = [];
 let queueItemsState = [];
 let queueRuntimeState = createDefaultQueueRuntimeState();
+let providerSettingsState = createDefaultProviderSettingsState();
+let providerDiagnosticsState = createDefaultProviderDiagnosticsState();
 let resultsFilterQuery = normalizeFilterQuery(resultsFilterInput.value);
 let persistCollectedLinksQueue = Promise.resolve();
 let queueAuthoringInProgress = false;
 let queueClearingInProgress = false;
 let queueLifecycleInProgress = false;
+let providerSettingsInProgress = false;
+let manualQueueResolutionInProgress = false;
 
 collectButton.addEventListener("click", () => {
   void collectLinks();
@@ -115,9 +122,16 @@ retryFailedQueueButton.addEventListener("click", () => {
   void retryFailedQueueItems();
 });
 
+enableConnectorBridgeInput.addEventListener("change", () => {
+  void updateProviderSettings();
+});
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   handleStorageChange(changes, areaName);
 });
+
+renderIntegrationState();
+updateQueueActionState();
 
 void loadPanelState();
 
@@ -137,11 +151,15 @@ async function loadPanelState() {
   const collectedLinks = normalizeCollectedLinks(response.collectedLinks);
   const queueItems = normalizeQueueItems(response.queueItems);
   const queueRuntime = normalizeQueueRuntime(response.queueRuntime);
+  const providerSettings = normalizeProviderSettings(response.providerSettings);
+  const providerDiagnostics = normalizeProviderDiagnostics(response.providerDiagnostics);
 
   renderSelectorRules(selectorRules);
   setCollectedLinksState(collectedLinks);
   setQueueItemsState(queueItems);
   setQueueRuntimeState(queueRuntime);
+  setProviderSettingsState(providerSettings);
+  setProviderDiagnosticsState(providerDiagnostics);
   setSelectorRulesDirty(false);
   setStatus("Ready.");
 }
@@ -542,6 +560,16 @@ function setQueueRuntimeState(queueRuntime) {
   updateQueueActionState();
 }
 
+function setProviderSettingsState(providerSettings) {
+  providerSettingsState = normalizeProviderSettings(providerSettings);
+  renderIntegrationState();
+}
+
+function setProviderDiagnosticsState(providerDiagnostics) {
+  providerDiagnosticsState = normalizeProviderDiagnostics(providerDiagnostics);
+  renderIntegrationState();
+}
+
 function handleStorageChange(changes, areaName) {
   if (areaName !== "local") {
     return;
@@ -555,6 +583,59 @@ function handleStorageChange(changes, areaName) {
   const queueRuntimeChange = changes[STORAGE_KEYS.QUEUE_RUNTIME];
   if (queueRuntimeChange) {
     setQueueRuntimeState(queueRuntimeChange.newValue);
+  }
+
+  const providerSettingsChange = changes[STORAGE_KEYS.PROVIDER_SETTINGS];
+  if (providerSettingsChange) {
+    setProviderSettingsState(providerSettingsChange.newValue);
+  }
+
+  const providerDiagnosticsChange = changes[STORAGE_KEYS.PROVIDER_DIAGNOSTICS];
+  if (providerDiagnosticsChange) {
+    setProviderDiagnosticsState(providerDiagnosticsChange.newValue);
+  }
+}
+
+async function updateProviderSettings() {
+  providerSettingsInProgress = true;
+  updateQueueActionState();
+  renderIntegrationState();
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.SET_PROVIDER_SETTINGS,
+      payload: {
+        settings: {
+          connectorBridgeEnabled: enableConnectorBridgeInput.checked
+        }
+      }
+    });
+
+    if (!response || response.ok !== true) {
+      setStatus(messageFromError(response?.error) ?? "Failed to update provider settings.");
+      renderIntegrationState();
+      return;
+    }
+
+    if (response.providerSettings) {
+      setProviderSettingsState(response.providerSettings);
+    }
+    if (response.providerDiagnostics) {
+      setProviderDiagnosticsState(response.providerDiagnostics);
+    }
+
+    if (providerSettingsState.connectorBridgeEnabled) {
+      setStatus("Connector bridge setting enabled. Manual fallback remains active when unavailable.");
+    } else {
+      setStatus("Connector bridge setting disabled. Manual provider is active.");
+    }
+  } catch (error) {
+    console.error("[zotero-archivist] Failed to update provider settings.", error);
+    setStatus("Failed to update provider settings.");
+  } finally {
+    providerSettingsInProgress = false;
+    updateQueueActionState();
+    renderIntegrationState();
   }
 }
 
@@ -596,6 +677,51 @@ async function retryFailedQueueItems() {
     fallbackErrorMessage: "Failed to retry queue items.",
     successStatusMessage: "Retry queued for failed items."
   });
+}
+
+async function resolveManualQueueItem(queueItemId, outcome) {
+  if (manualQueueResolutionInProgress) {
+    return;
+  }
+
+  manualQueueResolutionInProgress = true;
+  updateQueueActionState();
+  renderQueue(queueItemsState);
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.RESOLVE_MANUAL_QUEUE_ITEM,
+      payload: {
+        queueItemId,
+        outcome
+      }
+    });
+
+    if (!response || response.ok !== true) {
+      setStatus(messageFromError(response?.error) ?? "Failed to resolve manual queue item.");
+      return;
+    }
+
+    if (Array.isArray(response.queueItems)) {
+      setQueueItemsState(response.queueItems);
+    }
+    if (response.queueRuntime) {
+      setQueueRuntimeState(response.queueRuntime);
+    }
+
+    if (outcome === "saved") {
+      setStatus("Marked manual-required item as saved.");
+    } else {
+      setStatus("Marked manual-required item as failed.");
+    }
+  } catch (error) {
+    console.error("[zotero-archivist] Failed to resolve manual queue item.", error);
+    setStatus("Failed to resolve manual queue item.");
+  } finally {
+    manualQueueResolutionInProgress = false;
+    updateQueueActionState();
+    renderQueue(queueItemsState);
+  }
 }
 
 async function runQueueLifecycleAction({
@@ -933,6 +1059,7 @@ function renderLinks(links) {
 
 function renderQueue(queueItems) {
   const safeQueueItems = Array.isArray(queueItems) ? queueItems : [];
+  const queueBusy = isQueueBusy();
 
   queueTitleEl.textContent = `Queue (${safeQueueItems.length})`;
   queueSummaryEl.textContent = summarizeQueueCounts(safeQueueItems);
@@ -967,12 +1094,68 @@ function renderQueue(queueItems) {
 
     const meta = document.createElement("div");
     meta.className = "queue-item-meta";
-    meta.textContent = `Attempts: ${queueItem.attempts}`;
+    const attemptsEl = document.createElement("div");
+    attemptsEl.textContent = `Attempts: ${queueItem.attempts}`;
+    meta.append(attemptsEl);
+
+    if (typeof queueItem.lastError === "string" && queueItem.lastError.length > 0) {
+      const errorEl = document.createElement("div");
+      errorEl.className = "queue-item-error";
+      errorEl.textContent = queueItem.lastError;
+      meta.append(errorEl);
+    }
+
+    if (queueItem.status === "manual_required") {
+      const manualActions = document.createElement("div");
+      manualActions.className = "queue-manual-actions";
+
+      const markSavedButton = document.createElement("button");
+      markSavedButton.type = "button";
+      markSavedButton.className = "queue-manual-button queue-manual-button-success";
+      markSavedButton.textContent = "Mark Saved";
+      markSavedButton.disabled = queueBusy;
+      markSavedButton.addEventListener("click", () => {
+        void resolveManualQueueItem(queueItem.id, "saved");
+      });
+
+      const markFailedButton = document.createElement("button");
+      markFailedButton.type = "button";
+      markFailedButton.className = "queue-manual-button queue-manual-button-failed";
+      markFailedButton.textContent = "Mark Failed";
+      markFailedButton.disabled = queueBusy;
+      markFailedButton.addEventListener("click", () => {
+        void resolveManualQueueItem(queueItem.id, "failed");
+      });
+
+      manualActions.append(markSavedButton, markFailedButton);
+      meta.append(manualActions);
+    }
 
     row.append(link, statusBadge);
     item.append(row, meta);
     queueListEl.append(item);
   }
+}
+
+function renderIntegrationState() {
+  enableConnectorBridgeInput.checked = providerSettingsState.connectorBridgeEnabled === true;
+  enableConnectorBridgeInput.disabled = providerSettingsInProgress;
+
+  integrationModeEl.textContent = `Mode: ${formatProviderModeLabel(providerDiagnosticsState.activeMode)}`;
+
+  const connectorStatus = providerDiagnosticsState.connectorBridge;
+  const connectorHealthLabel =
+    connectorStatus.healthy === true ? "healthy" : connectorStatus.enabled ? "degraded" : "disabled";
+
+  const summaryParts = [
+    `Connector bridge: ${connectorHealthLabel}`,
+    connectorStatus.details
+  ];
+  if (typeof providerDiagnosticsState.lastError === "string" && providerDiagnosticsState.lastError.length > 0) {
+    summaryParts.push(providerDiagnosticsState.lastError);
+  }
+
+  integrationHealthEl.textContent = summaryParts.join(" • ");
 }
 
 function renderQueueRuntimeStatus(queueRuntime) {
@@ -1024,7 +1207,7 @@ function updateResultsControlState({ totalCount, filteredCount }) {
 
 function updateQueueActionState() {
   const selectedCount = collectedLinksState.filter((link) => link.selected !== false).length;
-  const queueBusy = queueAuthoringInProgress || queueClearingInProgress || queueLifecycleInProgress;
+  const queueBusy = isQueueBusy();
   const queueCounts = getQueueItemCounts(queueItemsState);
   const hasActiveQueueItem = typeof queueRuntimeState.activeQueueItemId === "string";
 
@@ -1043,6 +1226,17 @@ function updateQueueActionState() {
     queueBusy ||
     queueRuntimeState.status === "running" ||
     queueCounts.retriableCount === 0;
+  enableConnectorBridgeInput.disabled = providerSettingsInProgress;
+}
+
+function isQueueBusy() {
+  return (
+    queueAuthoringInProgress ||
+    queueClearingInProgress ||
+    queueLifecycleInProgress ||
+    providerSettingsInProgress ||
+    manualQueueResolutionInProgress
+  );
 }
 
 function createResultMessageItem(message) {
@@ -1176,6 +1370,10 @@ function normalizeQueueItems(input) {
       queueItem.lastError = candidate.lastError.trim();
     }
 
+    if (Number.isInteger(candidate.manualTabId)) {
+      queueItem.manualTabId = candidate.manualTabId;
+    }
+
     normalized.push(queueItem);
   }
 
@@ -1244,6 +1442,66 @@ function normalizeQueueRuntime(input) {
   };
 }
 
+function normalizeProviderSettings(input) {
+  if (!input || typeof input !== "object") {
+    return createDefaultProviderSettingsState();
+  }
+
+  return {
+    connectorBridgeEnabled: input.connectorBridgeEnabled === true
+  };
+}
+
+function createDefaultProviderSettingsState() {
+  return {
+    connectorBridgeEnabled: false
+  };
+}
+
+function normalizeProviderDiagnostics(input) {
+  if (!input || typeof input !== "object") {
+    return createDefaultProviderDiagnosticsState();
+  }
+
+  const connectorBridgeInput =
+    input.connectorBridge && typeof input.connectorBridge === "object" ? input.connectorBridge : {};
+  const activeMode =
+    typeof input.activeMode === "string" && input.activeMode.length > 0 ? input.activeMode : "manual";
+
+  return {
+    activeMode,
+    connectorBridge: {
+      enabled: connectorBridgeInput.enabled === true,
+      healthy: connectorBridgeInput.healthy === true,
+      details:
+        typeof connectorBridgeInput.details === "string" && connectorBridgeInput.details.trim().length > 0
+          ? connectorBridgeInput.details.trim()
+          : connectorBridgeInput.enabled === true
+            ? "Connector bridge status unknown."
+            : "Connector bridge is disabled."
+    },
+    lastError:
+      typeof input.lastError === "string" && input.lastError.trim().length > 0
+        ? input.lastError.trim()
+        : null,
+    updatedAt:
+      Number.isFinite(input.updatedAt) && input.updatedAt > 0 ? Math.trunc(input.updatedAt) : Date.now()
+  };
+}
+
+function createDefaultProviderDiagnosticsState() {
+  return {
+    activeMode: "manual",
+    connectorBridge: {
+      enabled: false,
+      healthy: false,
+      details: "Connector bridge is disabled."
+    },
+    lastError: null,
+    updatedAt: Date.now()
+  };
+}
+
 function createDefaultQueueRuntimeState() {
   return {
     status: "idle",
@@ -1295,6 +1553,16 @@ function summarizeQueueCounts(queueItems) {
 
 function formatQueueStatusLabel(status) {
   return status.replaceAll("_", " ");
+}
+
+function formatProviderModeLabel(mode) {
+  if (mode === "connector_bridge") {
+    return "connector bridge";
+  }
+  if (mode === "local_api") {
+    return "local api";
+  }
+  return "manual";
 }
 
 function setStatus(message) {
