@@ -21,6 +21,7 @@ A Chromium browser extension to collect links from a web page and archive select
 
 ## Documentation
 
+- [Side panel screenshot](docs/zotero-archivist-sidepanel-reddit-datahoarder.png)
 - Architecture and design overview: `docs/ARCHITECTURE.md`
 
 ## Development
