@@ -14,6 +14,7 @@ test("connector bridge health check reports probe requirement when no eligible t
   const result = await provider.checkHealth();
 
   assert.equal(result.ok, false);
+  assert.equal(result.bridgeReady, false);
   assert.equal(result.connectorAvailable, null);
   assert.equal(result.zoteroOnline, null);
   assert.match(result.message, /probe requires an open http\(s\) tab/i);
@@ -38,6 +39,7 @@ test("connector bridge health check reports healthy when connector reports onlin
   const result = await provider.checkHealth({ tabId: 1 });
 
   assert.equal(result.ok, true);
+  assert.equal(result.bridgeReady, true);
   assert.equal(result.connectorAvailable, true);
   assert.equal(result.zoteroOnline, true);
   assert.match(result.message, /available/i);
@@ -60,6 +62,7 @@ test("connector bridge health check maps iframe-loading failures to connector-un
   const result = await provider.checkHealth({ tabId: 2 });
 
   assert.equal(result.ok, false);
+  assert.equal(result.bridgeReady, false);
   assert.equal(result.connectorAvailable, false);
   assert.equal(result.zoteroOnline, null);
   assert.match(result.message, /extension is unavailable/i);

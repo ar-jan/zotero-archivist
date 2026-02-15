@@ -29,6 +29,7 @@ export function createConnectorBridgeProvider() {
         return createConnectorHealthResult({
           ok: false,
           message: probeTarget.message,
+          bridgeReady: false,
           connectorAvailable: null,
           zoteroOnline: null
         });
@@ -44,6 +45,7 @@ export function createConnectorBridgeProvider() {
           return createConnectorHealthResult({
             ok: false,
             message: CONNECTOR_EXTENSION_UNAVAILABLE_MESSAGE,
+            bridgeReady: false,
             connectorAvailable: false,
             zoteroOnline: null
           });
@@ -52,7 +54,8 @@ export function createConnectorBridgeProvider() {
         return createConnectorHealthResult({
           ok: false,
           message: `Connector bridge probe failed: ${probeResult.error}`,
-          connectorAvailable: null,
+          bridgeReady: false,
+          connectorAvailable: true,
           zoteroOnline: null
         });
       }
@@ -61,6 +64,7 @@ export function createConnectorBridgeProvider() {
         return createConnectorHealthResult({
           ok: false,
           message: CONNECTOR_OFFLINE_HEALTH_MESSAGE,
+          bridgeReady: true,
           connectorAvailable: true,
           zoteroOnline: false
         });
@@ -69,6 +73,7 @@ export function createConnectorBridgeProvider() {
       return createConnectorHealthResult({
         ok: true,
         message: CONNECTOR_HEALTHY_MESSAGE,
+        bridgeReady: true,
         connectorAvailable: true,
         zoteroOnline: true
       });
@@ -143,10 +148,17 @@ export function createConnectorBridgeProvider() {
   };
 }
 
-function createConnectorHealthResult({ ok, message, connectorAvailable = null, zoteroOnline = null }) {
+function createConnectorHealthResult({
+  ok,
+  message,
+  bridgeReady = null,
+  connectorAvailable = null,
+  zoteroOnline = null
+}) {
   return {
     ok,
     message,
+    bridgeReady,
     connectorAvailable,
     zoteroOnline
   };

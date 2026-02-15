@@ -8,6 +8,7 @@ test("panel store normalizes provider settings and diagnostics defaults", () => 
 
   assert.equal(panelStore.state.providerDiagnostics.connectorBridge.enabled, true);
   assert.equal(panelStore.state.providerDiagnostics.connectorBridge.healthy, false);
+  assert.equal(panelStore.state.providerDiagnostics.connectorBridge.bridgeReady, null);
   assert.equal(panelStore.state.queueSettings.interItemDelayMs, 5000);
   assert.equal(panelStore.state.queueSettings.interItemDelayJitterMs, 2000);
 });

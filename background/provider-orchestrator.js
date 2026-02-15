@@ -79,6 +79,7 @@ export function createProviderOrchestrator({
       connectorHealth = {
         ok: false,
         message: `Connector bridge health check failed: ${String(error)}`,
+        bridgeReady: false,
         connectorAvailable: null,
         zoteroOnline: null
       };
@@ -98,6 +99,12 @@ export function createProviderOrchestrator({
       connectorBridge: {
         enabled: true,
         healthy: connectorHealth?.ok === true,
+        bridgeReady:
+          connectorHealth?.bridgeReady === true
+            ? true
+            : connectorHealth?.bridgeReady === false
+              ? false
+              : null,
         connectorAvailable:
           connectorHealth?.connectorAvailable === true
             ? true

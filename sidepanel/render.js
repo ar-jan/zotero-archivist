@@ -316,16 +316,16 @@ function resolveBridgeDisplayState(connectorStatus) {
     };
   }
 
-  if (connectorStatus.healthy === true) {
+  if (connectorStatus.bridgeReady === true) {
     return {
       state: "healthy",
-      label: "available"
+      label: "ready"
     };
   }
 
   return {
     state: "unhealthy",
-    label: "unavailable"
+    label: "not ready"
   };
 }
 
@@ -340,20 +340,13 @@ function resolveConnectorDisplayState(connectorStatus) {
   if (connectorStatus.connectorAvailable === true) {
     return {
       state: "healthy",
-      label: "available"
-    };
-  }
-
-  if (connectorStatus.connectorAvailable === false) {
-    return {
-      state: "unhealthy",
-      label: "unavailable"
+      label: "installed"
     };
   }
 
   return {
-    state: "unknown",
-    label: "unknown"
+    state: "unhealthy",
+    label: "not installed"
   };
 }
 

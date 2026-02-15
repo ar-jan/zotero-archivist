@@ -6,6 +6,7 @@ export function createDefaultProviderDiagnostics() {
     connectorBridge: {
       enabled: true,
       healthy: false,
+      bridgeReady: null,
       connectorAvailable: null,
       zoteroOnline: null
     },
@@ -62,6 +63,7 @@ function normalizeConnectorBridgeDiagnostics(input) {
     return {
       enabled: true,
       healthy: false,
+      bridgeReady: null,
       connectorAvailable: null,
       zoteroOnline: null
     };
@@ -70,6 +72,7 @@ function normalizeConnectorBridgeDiagnostics(input) {
   return {
     enabled: true,
     healthy: input.healthy === true,
+    bridgeReady: normalizeNullableBoolean(input.bridgeReady),
     connectorAvailable: normalizeNullableBoolean(input.connectorAvailable),
     zoteroOnline: normalizeNullableBoolean(input.zoteroOnline)
   };

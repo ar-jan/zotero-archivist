@@ -11,6 +11,7 @@ test("provider orchestrator resolves active provider when health check succeeds"
       checkHealth: async () => ({
         ok: true,
         message: "online",
+        bridgeReady: true,
         connectorAvailable: true,
         zoteroOnline: true
       }),
@@ -27,6 +28,7 @@ test("provider orchestrator resolves active provider when health check succeeds"
   assert.equal(result.provider?.mode, "connector_bridge");
   assert.equal(result.diagnostics.connectorBridge.enabled, true);
   assert.equal(result.diagnostics.connectorBridge.healthy, true);
+  assert.equal(result.diagnostics.connectorBridge.bridgeReady, true);
   assert.equal(result.diagnostics.connectorBridge.connectorAvailable, true);
   assert.equal(result.diagnostics.connectorBridge.zoteroOnline, true);
   assert.equal(diagnosticsWrites.length, 1);
@@ -40,6 +42,7 @@ test("provider orchestrator resolves no provider when health check fails", async
       checkHealth: async () => ({
         ok: false,
         message: "bridge unavailable",
+        bridgeReady: false,
         connectorAvailable: false,
         zoteroOnline: null
       }),
@@ -56,6 +59,7 @@ test("provider orchestrator resolves no provider when health check fails", async
   assert.equal(result.provider, null);
   assert.equal(result.diagnostics.connectorBridge.enabled, true);
   assert.equal(result.diagnostics.connectorBridge.healthy, false);
+  assert.equal(result.diagnostics.connectorBridge.bridgeReady, false);
   assert.equal(result.diagnostics.connectorBridge.connectorAvailable, false);
   assert.equal(result.diagnostics.connectorBridge.zoteroOnline, null);
   assert.equal(result.unavailableReason, "bridge unavailable");
@@ -70,6 +74,7 @@ test("provider orchestrator saveQueueItemWithProvider returns unavailable messag
       checkHealth: async () => ({
         ok: false,
         message: "probe failed",
+        bridgeReady: false,
         connectorAvailable: false,
         zoteroOnline: null
       }),
@@ -100,6 +105,7 @@ test("provider orchestrator saveQueueItemWithProvider reports success and keeps 
       checkHealth: async () => ({
         ok: true,
         message: "online",
+        bridgeReady: true,
         connectorAvailable: true,
         zoteroOnline: true
       }),
@@ -128,6 +134,7 @@ test("provider orchestrator saveQueueItemWithProvider captures provider failure 
       checkHealth: async () => ({
         ok: true,
         message: "online",
+        bridgeReady: true,
         connectorAvailable: true,
         zoteroOnline: true
       }),

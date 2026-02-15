@@ -83,6 +83,7 @@ test("storage repo initializes provider diagnostics defaults when missing", asyn
 
   assert.equal(diagnostics.connectorBridge.enabled, true);
   assert.equal(diagnostics.connectorBridge.healthy, false);
+  assert.equal(diagnostics.connectorBridge.bridgeReady, null);
   assert.equal(chromeMock.writes.length, 1);
   assert.equal(Boolean(chromeMock.storageState[STORAGE_KEYS.PROVIDER_DIAGNOSTICS]), true);
 });
@@ -93,6 +94,7 @@ test("storage repo normalizes malformed provider diagnostics and writes back", a
       connectorBridge: {
         enabled: false,
         healthy: "yes",
+        bridgeReady: "sometimes",
         connectorAvailable: "maybe",
         zoteroOnline: false
       },
@@ -106,6 +108,7 @@ test("storage repo normalizes malformed provider diagnostics and writes back", a
 
   assert.equal(diagnostics.connectorBridge.enabled, true);
   assert.equal(diagnostics.connectorBridge.healthy, false);
+  assert.equal(diagnostics.connectorBridge.bridgeReady, null);
   assert.equal(diagnostics.connectorBridge.connectorAvailable, null);
   assert.equal(diagnostics.connectorBridge.zoteroOnline, false);
   assert.equal(chromeMock.writes.length, 1);
