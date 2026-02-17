@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import { createQueueEngine, QUEUE_ENGINE_ALARM_NAME } from "../background/queue-engine.js";
 
+const QUEUE_TAB_LOAD_MAX_WAIT_MS = 10 * 60 * 1000;
+
 test("runQueueEngineSoon opens a pending item tab and stores active runtime context", async (t) => {
   const chromeMock = installChromeMock();
   t.after(() => chromeMock.restore());
@@ -133,7 +135,7 @@ test("runQueueEngineSoon fails an active item when provider save fails", async (
   assert.deepEqual(chromeMock.tabs.removed, [52]);
 });
 
-test("handleQueueAlarm fails loading active item on watchdog timeout", async (t) => {
+test("handleQueueAlarm keeps waiting while active tab is still loading within max wait", async (t) => {
   const chromeMock = installChromeMock({
     tabsById: new Map([
       [53, { id: 53, url: "https://example.com/a", status: "loading" }]
@@ -143,6 +145,40 @@ test("handleQueueAlarm fails loading active item on watchdog timeout", async (t)
 
   const harness = createQueueEngineHarness({
     queueItems: [createQueueItem({ id: "q1", url: "https://example.com/a", status: "opening_tab" })],
+    queueRuntime: createQueueRuntime({
+      status: "running",
+      activeQueueItemId: "q1",
+      activeTabId: 53
+    })
+  });
+
+  await harness.queueEngine.handleQueueAlarm();
+  await harness.queueEngine.waitForIdle();
+
+  const { queueItems, queueRuntime } = harness.getState();
+  assert.equal(queueItems[0].status, "opening_tab");
+  assert.equal(queueRuntime.status, "running");
+  assert.deepEqual(chromeMock.tabs.removed, []);
+  assert.deepEqual(chromeMock.alarms.created.map((entry) => entry.name), [QUEUE_ENGINE_ALARM_NAME]);
+});
+
+test("handleQueueAlarm fails loading active item on watchdog timeout", async (t) => {
+  const chromeMock = installChromeMock({
+    tabsById: new Map([
+      [53, { id: 53, url: "https://example.com/a", status: "loading" }]
+    ])
+  });
+  t.after(() => chromeMock.restore());
+
+  const harness = createQueueEngineHarness({
+    queueItems: [
+      createQueueItem({
+        id: "q1",
+        url: "https://example.com/a",
+        status: "opening_tab",
+        updatedAt: Date.now() - QUEUE_TAB_LOAD_MAX_WAIT_MS - 1
+      })
+    ],
     queueRuntime: createQueueRuntime({
       status: "running",
       activeQueueItemId: "q1",
@@ -301,7 +337,9 @@ function createQueueItem({
   title = url,
   status = "pending",
   attempts = 0,
-  lastError = undefined
+  lastError = undefined,
+  updatedAt = Date.now(),
+  createdAt = updatedAt
 }) {
   const queueItem = {
     id,
@@ -309,8 +347,8 @@ function createQueueItem({
     title,
     status,
     attempts,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    createdAt,
+    updatedAt
   };
   if (typeof lastError === "string") {
     queueItem.lastError = lastError;

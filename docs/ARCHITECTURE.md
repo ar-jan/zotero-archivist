@@ -192,7 +192,8 @@ Key design choices:
   - `chrome.tabs.onUpdated`
   - `chrome.tabs.onRemoved`
   - `chrome.alarms` watchdog (`queue-engine-watchdog`)
-- Alarm timeout handling marks stuck/closed active items as failed.
+- Alarm handling re-checks loading queue tabs and only fails them after a bounded max-load wait;
+  closed/missing active tabs fail immediately.
 - Recovery on worker startup (`recoverQueueEngineState`) resumes engine if runtime status is `running`.
 
 Lifecycle operations in `background/queue-lifecycle.js` enforce control semantics:

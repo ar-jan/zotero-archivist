@@ -9,6 +9,7 @@ import {
 export const QUEUE_ENGINE_ALARM_NAME = "queue-engine-watchdog";
 const QUEUE_ALARM_DELAY_MINUTES = 1;
 const QUEUE_INTER_ITEM_DELAY_MIN_MS = 0;
+const QUEUE_TAB_LOAD_MAX_WAIT_MS = 10 * 60 * 1000;
 const QUEUE_TAB_LOAD_TIMEOUT_MESSAGE = "Queue tab did not finish loading before timeout.";
 const QUEUE_TAB_CLOSED_MESSAGE = "Queue tab was closed before loading completed.";
 
@@ -234,6 +235,17 @@ export function createQueueEngine({
       if (activeTabState === "loading" || activeTabState === "missing") {
         const queueItems = await getQueueItems();
         const activeIndex = queueItems.findIndex((item) => item.id === queueRuntime.activeQueueItemId);
+        const activeQueueItem = activeIndex >= 0 ? queueItems[activeIndex] : null;
+        if (
+          activeTabState === "loading" &&
+          activeQueueItem &&
+          isQueueItemActiveStatus(activeQueueItem.status) &&
+          !hasQueueTabLoadTimedOut(activeQueueItem)
+        ) {
+          await scheduleQueueAlarm();
+          return;
+        }
+
         if (activeIndex >= 0 && isQueueItemActiveStatus(queueItems[activeIndex].status)) {
           const nextQueueItems = [...queueItems];
           nextQueueItems[activeIndex] = markQueueItemFailed(
@@ -440,6 +452,14 @@ export function createQueueEngine({
     runQueueEngineSoon,
     waitForIdle
   };
+}
+
+function hasQueueTabLoadTimedOut(queueItem, now = Date.now()) {
+  if (!queueItem || !Number.isFinite(queueItem.updatedAt) || queueItem.updatedAt <= 0) {
+    return true;
+  }
+
+  return now - queueItem.updatedAt >= QUEUE_TAB_LOAD_MAX_WAIT_MS;
 }
 
 function normalizeRandomValue(value) {
