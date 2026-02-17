@@ -35,6 +35,7 @@
   --font-size-sm: 12px;
   --font-size-md: 13px;
   --font-size-lg: 14px;
+  --queue-min-height: 220px;
 }
 
 * {
@@ -385,7 +386,8 @@ body {
 /* 3. Workspace (Results + Queue) */
 .workspace {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -394,12 +396,29 @@ body {
 .queue {
   /* Results & Queue share space inside workspace, but distinct blocks */
   border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.results {
+  flex: 1 1 auto;
+}
+
+.queue {
+  flex: 0 1 42%;
+  min-height: var(--queue-min-height);
+  max-height: 360px;
 }
 
 .results .section-body,
 .queue .section-body {
   padding: 0;
   /* Full bleed lists */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Filter Bar */
@@ -458,6 +477,17 @@ body {
   list-style: none;
   padding: 0;
   margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.filter-bar,
+.queue-toolbar,
+.queue-toolbar-secondary,
+.queue-settings-row,
+.queue-runtime-status {
+  flex: 0 0 auto;
 }
 
 .result-item,
