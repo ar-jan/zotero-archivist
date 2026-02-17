@@ -127,6 +127,12 @@ body {
   gap: var(--space-sm);
 }
 
+.section-heading {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
 .section-heading button.section-toggle {
   background: none;
   border: none;
@@ -183,6 +189,11 @@ body {
 .icon-button:hover {
   background: var(--bg-hover);
   color: var(--text-main);
+}
+
+.icon-button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .section-body {
@@ -282,6 +293,11 @@ body {
   color: var(--text-main);
 }
 
+.text-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .text-button.danger:hover {
   color: var(--danger-color);
   background: #fef2f2;
@@ -375,6 +391,11 @@ body {
   background: var(--bg-hover);
 }
 
+.action-button.small:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .queue-toolbar {
   padding: var(--space-sm) var(--space-md) var(--space-xs);
   background: var(--bg-app);
@@ -407,6 +428,7 @@ body {
 .queue-toolbar-secondary {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-xs);
   padding: 0 var(--space-md) var(--space-xs);
   background: var(--bg-app);
 }

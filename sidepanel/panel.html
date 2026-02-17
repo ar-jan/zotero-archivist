@@ -8,7 +8,6 @@
   </head>
   <body>
     <main class="panel">
-      <!-- 1. Unified Header -->
       <header class="app-header">
         <div class="header-main">
           <h1>Zotero Archivist</h1>
@@ -17,7 +16,6 @@
         <p id="status" class="status-line" role="status"></p>
       </header>
 
-      <!-- 2. Compact Selectors -->
       <section class="section selectors" aria-live="polite">
         <div class="section-header">
           <h2 class="section-heading">
@@ -42,10 +40,7 @@
         </div>
       </section>
 
-      <!-- 3. Workspace: Results & Queue (Combined Visual Flow) -->
       <div class="workspace">
-        
-        <!-- Results Section -->
         <section class="section results" aria-live="polite">
           <div class="section-header">
             <h2 class="section-heading">
@@ -61,10 +56,10 @@
             </h2>
             <p id="results-summary" class="section-meta"></p>
           </div>
-          
+
           <div id="results-body" class="section-body">
             <div class="filter-bar">
-               <input
+              <input
                 id="results-filter-input"
                 type="search"
                 class="filter-input"
@@ -82,81 +77,72 @@
           </div>
         </section>
 
-        <!-- Queue Section -->
         <section class="section queue" aria-live="polite">
           <div class="section-header">
-             <div class="queue-header-title-group">
-               <h2 class="section-heading" id="queue-title">Queue</h2>
-               <span id="queue-summary" class="section-meta"></span>
-             </div>
-             <div class="queue-global-controls">
-                <button id="start-queue-button" type="button" class="action-button small">Start</button>
-                <button id="pause-queue-button" type="button" class="action-button small">Pause</button>
-                <button id="resume-queue-button" type="button" class="action-button small">Resume</button>
-                <button id="stop-queue-button" type="button" class="action-button small">Stop</button>
-             </div>
+            <div class="queue-header-title-group">
+              <h2 class="section-heading" id="queue-title">Queue</h2>
+              <span id="queue-summary" class="section-meta"></span>
+            </div>
+            <div class="queue-global-controls">
+              <button id="start-queue-button" type="button" class="action-button small">Start</button>
+              <button id="pause-queue-button" type="button" class="action-button small">Pause</button>
+              <button id="resume-queue-button" type="button" class="action-button small">Resume</button>
+              <button id="stop-queue-button" type="button" class="action-button small">Stop</button>
+            </div>
           </div>
-          
+
           <div id="queue-body" class="section-body">
             <div class="queue-toolbar">
-               <button id="add-selected-to-queue-button" type="button" class="secondary-button full-width">Add Selected to Queue</button>
+              <button id="add-selected-to-queue-button" type="button" class="secondary-button full-width">Add Selected to Queue</button>
             </div>
-             <div class="queue-toolbar-secondary">
-               <button id="clear-queue-button" type="button" class="text-button danger">Clear Queue</button>
-               <button id="clear-archived-queue-button" type="button" class="text-button">Clear Archived</button>
-               <button id="reverse-queue-button" type="button" class="text-button">Reverse</button>
-               <button id="retry-failed-queue-button" type="button" class="text-button">Retry Failed</button>
-             </div>
+            <div class="queue-toolbar-secondary">
+              <button id="clear-queue-button" type="button" class="text-button danger">Clear Queue</button>
+              <button id="clear-archived-queue-button" type="button" class="text-button">Clear Archived</button>
+              <button id="reverse-queue-button" type="button" class="text-button">Reverse</button>
+              <button id="retry-failed-queue-button" type="button" class="text-button">Retry Failed</button>
+            </div>
 
-             <div class="queue-settings-row">
-               <label title="Delay in seconds">
-                 <span>Delay</span>
-                 <input id="queue-delay-seconds-input" type="number" min="0" step="0.1" class="mini-input">
-               </label>
-               <label title="Jitter in seconds">
-                 <span>+/-</span>
-                 <input id="queue-jitter-seconds-input" type="number" min="0" step="0.1" class="mini-input">
-               </label>
-                <button id="save-queue-settings-button" type="button" class="text-button">Save</button>
-             </div>
-             
+            <div class="queue-settings-row">
+              <label title="Delay in seconds">
+                <span>Delay</span>
+                <input id="queue-delay-seconds-input" type="number" min="0" step="0.1" class="mini-input">
+              </label>
+              <label title="Jitter in seconds">
+                <span>+/-</span>
+                <input id="queue-jitter-seconds-input" type="number" min="0" step="0.1" class="mini-input">
+              </label>
+              <button id="save-queue-settings-button" type="button" class="text-button">Save</button>
+            </div>
+
             <p id="queue-runtime-status" class="queue-runtime-status"></p>
             <ul id="queue-list" class="queue-list"></ul>
           </div>
         </section>
       </div>
 
-      <!-- 4. Sticky Footer: Integration -->
       <footer class="app-footer integration" aria-live="polite">
         <div class="footer-status-line">
-           <span id="integration-mode" class="integration-mode-badge"></span>
-           <span class="spacer"></span>
-           <button id="refresh-diagnostics-button" type="button" class="icon-button small" title="Refresh Status">↻</button>
+          <span id="integration-mode" class="integration-mode-badge"></span>
+          <span class="spacer"></span>
+          <button id="refresh-diagnostics-button" type="button" class="icon-button small" title="Refresh Status">↻</button>
         </div>
-        
+
         <div class="integration-metrics">
           <div id="integration-connector-row" class="status-dot-container" data-state="unknown" title="Zotero Connector">
-             <span class="status-dot"></span> <span class="status-label">Ext</span>
+            <span class="status-dot"></span> <span class="status-label">Ext</span>
           </div>
           <div id="integration-bridge-row" class="status-dot-container" data-state="unknown" title="Bridge">
-             <span class="status-dot"></span> <span class="status-label">Bridge</span>
+            <span class="status-dot"></span> <span class="status-label">Bridge</span>
           </div>
           <div id="integration-zotero-row" class="status-dot-container" data-state="unknown" title="Zotero App">
-             <span class="status-dot"></span> <span class="status-label">App</span>
+            <span class="status-dot"></span> <span class="status-label">App</span>
           </div>
         </div>
         <p id="integration-error" class="integration-error-toast" hidden></p>
-        <!-- Retain original IDs for logic, but hidden/repurposed if needed -->
         <span id="integration-updated-at" hidden></span>
         <span id="integration-connector-status" hidden></span>
         <span id="integration-bridge-status" hidden></span>
         <span id="integration-zotero-status" hidden></span>
-        
-        <!-- Missing ID needed for render.js? render.js expects these IDs to exist. -->
-        <!-- Logic uses: integration-connector-row (dataset.state), integration-connector-status (textContent) -->
-        <!-- I've kept the rows, but hidden the text spans if I want a dot-only look, 
-             OR I can keep the functionality by letting render.js update the hidden spans 
-             and using CSS to control visibility. -->
       </footer>
     </main>
 

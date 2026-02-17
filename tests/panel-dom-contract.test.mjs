@@ -42,3 +42,24 @@ test("selector and results sections keep toggle markup contract", () => {
     "results toggle button should control results-body"
   );
 });
+
+test("panel.html does not contain duplicate ids", () => {
+  const panelMarkup = readFileSync(new URL("../sidepanel/panel.html", import.meta.url), "utf8");
+  const ids = extractMatches(panelMarkup, /id="([^"]+)"/g);
+  const uniqueIds = new Set();
+  const duplicateIds = [];
+
+  for (const id of ids) {
+    if (uniqueIds.has(id)) {
+      duplicateIds.push(id);
+      continue;
+    }
+    uniqueIds.add(id);
+  }
+
+  assert.deepEqual(
+    duplicateIds,
+    [],
+    `panel.html has duplicate ids: ${duplicateIds.join(", ")}`
+  );
+});
