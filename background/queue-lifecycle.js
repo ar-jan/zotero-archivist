@@ -32,6 +32,32 @@ export function createQueueLifecycleHandlers({
     });
   }
 
+  async function clearArchivedQueue() {
+    const queueRuntime = await getQueueRuntime();
+    if (queueRuntime.status === "running") {
+      return createError(
+        ERROR_CODES.BAD_REQUEST,
+        "Pause or stop the queue before clearing archived items."
+      );
+    }
+
+    const queueItems = await getQueueItems();
+    const nextQueueItems = queueItems.filter((item) => item.status !== "archived");
+    const clearedCount = queueItems.length - nextQueueItems.length;
+
+    if (clearedCount === 0) {
+      return createError(ERROR_CODES.BAD_REQUEST, "Queue has no archived items.");
+    }
+
+    await saveQueueItems(nextQueueItems);
+
+    return createSuccess({
+      queueItems: nextQueueItems,
+      queueRuntime,
+      clearedCount
+    });
+  }
+
   async function startQueue(queueRuntimeContext = undefined) {
     const queueRuntime = await getQueueRuntime();
     if (queueRuntime.status === "running") {
@@ -219,6 +245,7 @@ export function createQueueLifecycleHandlers({
 
   return {
     clearQueue,
+    clearArchivedQueue,
     pauseQueue,
     resumeQueue,
     reverseQueue,

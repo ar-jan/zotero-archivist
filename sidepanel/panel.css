@@ -465,6 +465,7 @@ body {
 
 #add-selected-to-queue-button,
 #clear-queue-button,
+#clear-archived-queue-button,
 #start-queue-button,
 #pause-queue-button,
 #resume-queue-button,
@@ -489,6 +490,12 @@ body {
   color: #fff;
 }
 
+#clear-archived-queue-button {
+  border: 1px solid #1d6d3f;
+  background: #fff;
+  color: #1d6d3f;
+}
+
 #start-queue-button,
 #resume-queue-button {
   border: 1px solid #0a66c2;
@@ -506,6 +513,7 @@ body {
 
 #add-selected-to-queue-button[disabled],
 #clear-queue-button[disabled],
+#clear-archived-queue-button[disabled],
 #start-queue-button[disabled],
 #pause-queue-button[disabled],
 #resume-queue-button[disabled],

@@ -6,6 +6,7 @@ import {
 import { getQueueItemCounts, normalizeQueueSettings } from "../shared/state.js";
 import {
   authorQueueFromSelectionAction,
+  clearArchivedQueueAction,
   clearQueueAction,
   collectLinksAction,
   ensureHostPermissionAction,
@@ -55,6 +56,7 @@ const queueRuntimeStatusEl = document.getElementById("queue-runtime-status");
 const queueListEl = document.getElementById("queue-list");
 const addSelectedToQueueButton = document.getElementById("add-selected-to-queue-button");
 const clearQueueButton = document.getElementById("clear-queue-button");
+const clearArchivedQueueButton = document.getElementById("clear-archived-queue-button");
 const reverseQueueButton = document.getElementById("reverse-queue-button");
 const startQueueButton = document.getElementById("start-queue-button");
 const pauseQueueButton = document.getElementById("pause-queue-button");
@@ -92,6 +94,7 @@ const queueController = createQueueController({
   ensureHostPermissionsForUrlsActionImpl: ensureHostPermissionsForUrlsAction,
   authorQueueFromSelectionActionImpl: authorQueueFromSelectionAction,
   clearQueueActionImpl: clearQueueAction,
+  clearArchivedQueueActionImpl: clearArchivedQueueAction,
   setQueueItemsState,
   setQueueRuntimeState,
   updateQueueActionState,
@@ -175,6 +178,10 @@ addSelectedToQueueButton.addEventListener("click", () => {
 
 clearQueueButton.addEventListener("click", () => {
   void queueController.clearQueueItems();
+});
+
+clearArchivedQueueButton.addEventListener("click", () => {
+  void queueController.clearArchivedQueueItems();
 });
 
 reverseQueueButton.addEventListener("click", () => {
@@ -407,6 +414,8 @@ function updateQueueActionState() {
   addSelectedToQueueButton.disabled = queueBusy || selectedCount === 0;
   clearQueueButton.disabled =
     queueBusy || panelState.queueItems.length === 0 || panelState.queueRuntime.status === "running";
+  clearArchivedQueueButton.disabled =
+    queueBusy || panelState.queueRuntime.status === "running" || queueCounts.archivedCount === 0;
   reverseQueueButton.disabled =
     queueBusy || panelState.queueRuntime.status === "running" || panelState.queueItems.length < 2;
   startQueueButton.disabled =

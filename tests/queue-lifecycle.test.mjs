@@ -193,6 +193,46 @@ test("retryFailedQueue rejects when running or nothing retriable", async () => {
   assert.equal(noneResponse.error.code, "BAD_REQUEST");
 });
 
+test("clearArchivedQueue removes archived items when queue is not running", async () => {
+  const harness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "paused" }),
+    queueItems: [
+      createQueueItem({ id: "q1", status: "pending" }),
+      createQueueItem({ id: "q2", status: "archived" }),
+      createQueueItem({ id: "q3", status: "failed", lastError: "save failed" }),
+      createQueueItem({ id: "q4", status: "archived" })
+    ]
+  });
+
+  const response = await harness.handlers.clearArchivedQueue();
+
+  assert.equal(response.ok, true);
+  assert.equal(response.clearedCount, 2);
+  assert.deepEqual(response.queueItems.map((item) => item.id), ["q1", "q3"]);
+  assert.deepEqual(harness.state.queueItems.map((item) => item.id), ["q1", "q3"]);
+  assert.equal(response.queueRuntime.status, "paused");
+});
+
+test("clearArchivedQueue rejects when running or when queue has no archived items", async () => {
+  const runningHarness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "running" }),
+    queueItems: [createQueueItem({ id: "q1", status: "archived" })]
+  });
+
+  const runningResponse = await runningHarness.handlers.clearArchivedQueue();
+  assert.equal(runningResponse.ok, false);
+  assert.equal(runningResponse.error.code, "BAD_REQUEST");
+
+  const noneHarness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "idle" }),
+    queueItems: [createQueueItem({ id: "q2", status: "pending" })]
+  });
+
+  const noneResponse = await noneHarness.handlers.clearArchivedQueue();
+  assert.equal(noneResponse.ok, false);
+  assert.equal(noneResponse.error.code, "BAD_REQUEST");
+});
+
 test("reverseQueue reverses queue item order when queue is not running", async () => {
   const harness = createHarness({
     queueRuntime: createQueueRuntime({

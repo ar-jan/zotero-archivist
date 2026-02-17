@@ -77,6 +77,33 @@ test("message router treats reverse queue as payloadless", async () => {
   assert.equal(validResponse.ok, true);
 });
 
+test("message router treats clear archived queue as payloadless", async () => {
+  const invalidResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.CLEAR_ARCHIVED_QUEUE,
+      payload: {}
+    },
+    {
+      [MESSAGE_TYPES.CLEAR_ARCHIVED_QUEUE]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(invalidResponse.ok, false);
+  assert.equal(invalidResponse.error.code, "BAD_REQUEST");
+  assert.match(invalidResponse.error.message, /does not accept a payload/i);
+
+  const validResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.CLEAR_ARCHIVED_QUEUE
+    },
+    {
+      [MESSAGE_TYPES.CLEAR_ARCHIVED_QUEUE]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(validResponse.ok, true);
+});
+
 test("message router allows optional queue runtime context payload for start and resume", async () => {
   const noPayloadStartResponse = await routeMessage(
     {

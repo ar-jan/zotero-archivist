@@ -206,6 +206,16 @@ test("queue controller no-ops clear when queue is already empty", async () => {
   assert.equal(harness.statuses.at(-1), "Queue is already empty.");
 });
 
+test("queue controller no-ops clear archived when no archived items exist", async () => {
+  const harness = createHarness({
+    initialQueueItems: [{ id: "q1", status: "pending", attempts: 0 }]
+  });
+
+  await harness.controller.clearArchivedQueueItems();
+
+  assert.equal(harness.statuses.at(-1), "Queue has no archived items.");
+});
+
 test("queue controller surfaces clear-queue error message", async () => {
   const harness = createHarness({
     initialQueueItems: [{ id: "q1", status: "pending", attempts: 0 }],
@@ -218,6 +228,30 @@ test("queue controller surfaces clear-queue error message", async () => {
   await harness.controller.clearQueueItems();
 
   assert.equal(harness.statuses.at(-1), "storage write failed");
+});
+
+test("queue controller clears archived items and reports removed count", async () => {
+  const harness = createHarness({
+    initialQueueItems: [
+      { id: "q1", status: "pending", attempts: 0 },
+      { id: "q2", status: "archived", attempts: 1 },
+      { id: "q3", status: "archived", attempts: 2 }
+    ],
+    clearArchivedQueueActionImpl: async () => ({
+      ok: true,
+      queueItems: [{ id: "q1", status: "pending", attempts: 0 }],
+      queueRuntime: { status: "idle", activeQueueItemId: null, activeTabId: null },
+      clearedCount: 2
+    })
+  });
+
+  await harness.controller.clearArchivedQueueItems();
+
+  assert.equal(harness.statuses.at(-1), "Cleared 2 archived item(s).");
+  assert.deepEqual(harness.clearingBusyChanges, [true, false]);
+  assert.equal(harness.queueActionStateUpdates >= 2, true);
+  assert.equal(harness.queueItemsWrites.length, 1);
+  assert.equal(harness.queueRuntimeWrites.length, 1);
 });
 
 function createHarness({
@@ -241,7 +275,13 @@ function createHarness({
     addedCount: 1,
     skippedCount: 0
   }),
-  clearQueueActionImpl = async () => ({ ok: true, queueItems: [], queueRuntime: { status: "idle" } })
+  clearQueueActionImpl = async () => ({ ok: true, queueItems: [], queueRuntime: { status: "idle" } }),
+  clearArchivedQueueActionImpl = async () => ({
+    ok: true,
+    queueItems: [{ id: "q1", status: "pending", attempts: 0 }],
+    queueRuntime: { status: "idle", activeQueueItemId: null, activeTabId: null },
+    clearedCount: 0
+  })
 } = {}) {
   const statuses = [];
   const lifecycleBusyChanges = [];
@@ -281,6 +321,7 @@ function createHarness({
     },
     authorQueueFromSelectionActionImpl,
     clearQueueActionImpl,
+    clearArchivedQueueActionImpl,
     setQueueItemsState(value) {
       queueItems = value;
       queueItemsWrites.push(value);

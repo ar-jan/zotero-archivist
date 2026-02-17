@@ -30,6 +30,10 @@ export async function clearQueueAction() {
   return sendRuntimeMessage(MESSAGE_TYPES.CLEAR_QUEUE);
 }
 
+export async function clearArchivedQueueAction() {
+  return sendRuntimeMessage(MESSAGE_TYPES.CLEAR_ARCHIVED_QUEUE);
+}
+
 export async function queueLifecycleAction(messageType, payload = undefined) {
   return sendRuntimeMessage(messageType, payload);
 }

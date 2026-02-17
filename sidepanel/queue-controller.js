@@ -37,6 +37,7 @@ export function createQueueController({
   ensureHostPermissionsForUrlsActionImpl,
   authorQueueFromSelectionActionImpl,
   clearQueueActionImpl,
+  clearArchivedQueueActionImpl,
   setQueueItemsState,
   setQueueRuntimeState,
   updateQueueActionState,
@@ -254,6 +255,45 @@ export function createQueueController({
     }
   }
 
+  async function clearArchivedQueueItems() {
+    const archivedCount = getQueueItems().filter((item) => item.status === "archived").length;
+    if (archivedCount === 0) {
+      setStatus("Queue has no archived items.");
+      return;
+    }
+
+    panelStore.setQueueClearingInProgress(true);
+    updateQueueActionState();
+
+    try {
+      const response = await clearArchivedQueueActionImpl();
+
+      if (!response || response.ok !== true) {
+        setStatus(
+          resolveErrorMessage(response?.error, messageFromError) ??
+            "Failed to clear archived queue items."
+        );
+        return;
+      }
+
+      setQueueItemsState(response.queueItems);
+      if (response.queueRuntime) {
+        setQueueRuntimeState(response.queueRuntime);
+      }
+
+      const clearedCount = Number.isFinite(response.clearedCount)
+        ? response.clearedCount
+        : archivedCount;
+      setStatus(`Cleared ${clearedCount} archived item(s).`);
+    } catch (error) {
+      logger.error("[zotero-archivist] Failed to clear archived queue items.", error);
+      setStatus("Failed to clear archived queue items.");
+    } finally {
+      panelStore.setQueueClearingInProgress(false);
+      updateQueueActionState();
+    }
+  }
+
   return {
     startQueueProcessing,
     pauseQueueProcessing,
@@ -262,7 +302,8 @@ export function createQueueController({
     retryFailedQueueItems,
     reverseQueueItems,
     addSelectedLinksToQueue,
-    clearQueueItems
+    clearQueueItems,
+    clearArchivedQueueItems
   };
 }
 
