@@ -131,6 +131,10 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
     link.rel = "noreferrer noopener";
     link.textContent = queueItem.title;
 
+    const attemptsEl = document.createElement("span");
+    attemptsEl.className = "queue-item-attempts";
+    attemptsEl.textContent = `Attempts: ${queueItem.attempts}`;
+
     const statusBadge = document.createElement("span");
     statusBadge.className = `queue-status queue-status-${queueItem.status}`;
     statusBadge.textContent = formatQueueStatusLabel(queueItem.status);
@@ -142,21 +146,18 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
     removeButton.textContent = "Remove";
     removeButton.setAttribute("aria-label", `Remove ${queueItem.title} from queue`);
 
-    const meta = document.createElement("div");
-    meta.className = "queue-item-meta";
-    const attemptsEl = document.createElement("div");
-    attemptsEl.textContent = `Attempts: ${queueItem.attempts}`;
-    meta.append(attemptsEl);
-
     if (typeof queueItem.lastError === "string" && queueItem.lastError.length > 0) {
+      const meta = document.createElement("div");
+      meta.className = "queue-item-meta";
       const errorEl = document.createElement("div");
       errorEl.className = "queue-item-error";
       errorEl.textContent = queueItem.lastError;
       meta.append(errorEl);
+      item.append(meta);
     }
 
-    row.append(link, removeButton, statusBadge);
-    item.append(row, meta);
+    row.append(link, attemptsEl, removeButton, statusBadge);
+    item.prepend(row);
     queueListEl.append(item);
   }
 
