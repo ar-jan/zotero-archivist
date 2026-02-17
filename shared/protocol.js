@@ -43,18 +43,20 @@ export const SAVE_PROVIDER_MODES = Object.freeze({
   CONNECTOR_BRIDGE: "connector_bridge"
 });
 
+export const ANCHOR_SELECTOR_RULE_ID = "anchors";
+
 export const DEFAULT_SELECTOR_RULES = Object.freeze([
   Object.freeze({
-    id: "substack-posts",
-    name: "Substack posts",
-    cssSelector: 'a[data-testid="post-preview-title"]',
+    id: ANCHOR_SELECTOR_RULE_ID,
+    name: "All anchor links",
+    cssSelector: "a[href]",
     urlAttribute: "href",
     enabled: true
   }),
   Object.freeze({
-    id: "anchors",
-    name: "All anchor links",
-    cssSelector: "a[href]",
+    id: "substack-posts",
+    name: "Substack posts",
+    cssSelector: 'a[data-testid="post-preview-title"]',
     urlAttribute: "href",
     enabled: false
   })
@@ -124,6 +126,12 @@ export function sanitizeSelectorRules(input) {
     }
 
     sanitizedRules.push(sanitizedRule);
+  }
+
+  const anchorRuleIndex = sanitizedRules.findIndex((rule) => rule.id === ANCHOR_SELECTOR_RULE_ID);
+  if (anchorRuleIndex > 0) {
+    const [anchorRule] = sanitizedRules.splice(anchorRuleIndex, 1);
+    sanitizedRules.unshift(anchorRule);
   }
 
   return sanitizedRules;

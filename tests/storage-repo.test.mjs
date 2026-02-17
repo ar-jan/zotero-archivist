@@ -114,6 +114,44 @@ test("storage repo normalizes malformed provider diagnostics and writes back", a
   assert.equal(chromeMock.writes.length, 1);
 });
 
+test("storage repo initializes selector rules defaults when missing", async (t) => {
+  const chromeMock = installStorageChromeMock();
+  t.after(() => chromeMock.restore());
+
+  const rules = await getSelectorRules();
+
+  assert.deepEqual(rules, DEFAULT_SELECTOR_RULES);
+  assert.equal(chromeMock.writes.length, 1);
+});
+
+test("storage repo keeps all anchor links rule at the top", async (t) => {
+  const chromeMock = installStorageChromeMock({
+    [STORAGE_KEYS.SELECTOR_RULES]: [
+      {
+        id: "substack-posts",
+        name: "Substack posts",
+        cssSelector: 'a[data-testid="post-preview-title"]',
+        urlAttribute: "href",
+        enabled: true
+      },
+      {
+        id: "anchors",
+        name: "All anchor links",
+        cssSelector: "a[href]",
+        urlAttribute: "href",
+        enabled: true
+      }
+    ]
+  });
+  t.after(() => chromeMock.restore());
+
+  const rules = await getSelectorRules();
+
+  assert.equal(rules[0].id, "anchors");
+  assert.equal(rules[1].id, "substack-posts");
+  assert.equal(chromeMock.writes.length, 1);
+});
+
 test("storage repo migrates legacy anchor-only selector defaults", async (t) => {
   const chromeMock = installStorageChromeMock({
     [STORAGE_KEYS.SELECTOR_RULES]: [

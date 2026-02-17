@@ -1,4 +1,5 @@
 import {
+  ANCHOR_SELECTOR_RULE_ID,
   DEFAULT_SELECTOR_RULES,
   STORAGE_KEYS,
   sanitizeSelectorRules
@@ -211,7 +212,7 @@ function isLegacyAnchorOnlyDefault(rules) {
 
   const normalizedName = typeof rule.name === "string" ? rule.name.trim().toLowerCase() : "";
   return (
-    rule.id === "anchors" &&
+    rule.id === ANCHOR_SELECTOR_RULE_ID &&
     rule.cssSelector === "a[href]" &&
     rule.urlAttribute === "href" &&
     rule.enabled === true &&
