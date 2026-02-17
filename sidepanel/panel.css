@@ -541,6 +541,11 @@ body {
   padding: 8px;
 }
 
+.queue-item-active {
+  background: #fffbf2;
+  border-color: #d2a566;
+}
+
 .queue-item-row {
   align-items: center;
   display: flex;

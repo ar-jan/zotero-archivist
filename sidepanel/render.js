@@ -1,4 +1,4 @@
-import { getQueueItemCounts } from "../shared/state.js";
+import { getQueueItemCounts, isQueueItemActiveStatus } from "../shared/state.js";
 
 export function initializeSectionToggle(toggleButton, sectionBody) {
   if (!(toggleButton instanceof HTMLButtonElement) || !(sectionBody instanceof HTMLElement)) {
@@ -112,9 +112,14 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
     return;
   }
 
+  let activeQueueItemEl = null;
   for (const queueItem of safeQueueItems) {
+    const isActiveQueueItem = isQueueItemActiveStatus(queueItem.status);
     const item = document.createElement("li");
-    item.className = "queue-item";
+    item.className = isActiveQueueItem ? "queue-item queue-item-active" : "queue-item";
+    if (isActiveQueueItem && activeQueueItemEl === null) {
+      activeQueueItemEl = item;
+    }
 
     const row = document.createElement("div");
     row.className = "queue-item-row";
@@ -147,6 +152,8 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
     item.append(row, meta);
     queueListEl.append(item);
   }
+
+  scrollQueueListToActiveItem(queueListEl, activeQueueItemEl);
 }
 
 export function renderIntegrationState({
@@ -277,6 +284,21 @@ function createResultMessageItem(message) {
   item.className = "result-item result-empty";
   item.textContent = message;
   return item;
+}
+
+function scrollQueueListToActiveItem(queueListEl, activeQueueItemEl) {
+  if (
+    !(queueListEl instanceof HTMLElement) ||
+    !(activeQueueItemEl instanceof HTMLElement) ||
+    typeof activeQueueItemEl.scrollIntoView !== "function"
+  ) {
+    return;
+  }
+
+  activeQueueItemEl.scrollIntoView({
+    block: "nearest",
+    inline: "nearest"
+  });
 }
 
 function summarizeQueueCounts(queueItems) {
