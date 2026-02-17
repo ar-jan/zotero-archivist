@@ -32,7 +32,7 @@ export function createQueueLifecycleHandlers({
     });
   }
 
-  async function startQueue() {
+  async function startQueue(queueRuntimeContext = undefined) {
     const queueRuntime = await getQueueRuntime();
     if (queueRuntime.status === "running") {
       return createSuccess({
@@ -52,9 +52,11 @@ export function createQueueLifecycleHandlers({
       return createError(ERROR_CODES.BAD_REQUEST, "Queue has no pending items.");
     }
 
+    const controllerWindowId = normalizeQueueRuntimeContextWindowId(queueRuntimeContext);
     const nextRuntime = {
       ...clearQueueRuntimeActive(queueRuntime),
       status: "running",
+      controllerWindowId,
       updatedAt: Date.now()
     };
     await saveQueueRuntime(nextRuntime);
@@ -87,7 +89,7 @@ export function createQueueLifecycleHandlers({
     });
   }
 
-  async function resumeQueue() {
+  async function resumeQueue(queueRuntimeContext = undefined) {
     const queueRuntime = await getQueueRuntime();
     if (queueRuntime.status !== "paused") {
       return createError(ERROR_CODES.BAD_REQUEST, "Queue is not paused.");
@@ -99,9 +101,19 @@ export function createQueueLifecycleHandlers({
       return createError(ERROR_CODES.BAD_REQUEST, "Queue has no pending items.");
     }
 
+    const controllerWindowIdFromContext =
+      normalizeQueueRuntimeContextWindowId(queueRuntimeContext);
+    const persistedControllerWindowId = Number.isInteger(queueRuntime.controllerWindowId)
+      ? queueRuntime.controllerWindowId
+      : null;
+
     const nextRuntime = {
       ...queueRuntime,
       status: "running",
+      controllerWindowId:
+        controllerWindowIdFromContext === null
+          ? persistedControllerWindowId
+          : controllerWindowIdFromContext,
       updatedAt: Date.now()
     };
     await saveQueueRuntime(nextRuntime);
@@ -214,4 +226,14 @@ export function createQueueLifecycleHandlers({
     startQueue,
     stopQueue
   };
+}
+
+function normalizeQueueRuntimeContextWindowId(queueRuntimeContext) {
+  if (!queueRuntimeContext || typeof queueRuntimeContext !== "object") {
+    return null;
+  }
+
+  return Number.isInteger(queueRuntimeContext.controllerWindowId)
+    ? queueRuntimeContext.controllerWindowId
+    : null;
 }

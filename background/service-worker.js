@@ -66,9 +66,11 @@ const messageHandlers = {
   [MESSAGE_TYPES.SET_QUEUE_SETTINGS]: async (message) =>
     setQueueSettings(message.payload?.queueSettings),
   [MESSAGE_TYPES.CLEAR_QUEUE]: async () => queueLifecycleHandlers.clearQueue(),
-  [MESSAGE_TYPES.START_QUEUE]: async () => queueLifecycleHandlers.startQueue(),
+  [MESSAGE_TYPES.START_QUEUE]: async (message) =>
+    queueLifecycleHandlers.startQueue(message.payload?.queueRuntimeContext),
   [MESSAGE_TYPES.PAUSE_QUEUE]: async () => queueLifecycleHandlers.pauseQueue(),
-  [MESSAGE_TYPES.RESUME_QUEUE]: async () => queueLifecycleHandlers.resumeQueue(),
+  [MESSAGE_TYPES.RESUME_QUEUE]: async (message) =>
+    queueLifecycleHandlers.resumeQueue(message.payload?.queueRuntimeContext),
   [MESSAGE_TYPES.STOP_QUEUE]: async () => queueLifecycleHandlers.stopQueue(),
   [MESSAGE_TYPES.RETRY_FAILED_QUEUE]: async () => queueLifecycleHandlers.retryFailedQueue(),
   [MESSAGE_TYPES.REVERSE_QUEUE]: async () => queueLifecycleHandlers.reverseQueue(),

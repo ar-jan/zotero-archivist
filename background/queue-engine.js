@@ -187,10 +187,15 @@ export function createQueueEngine({
 
     let openedTabId;
     try {
-      const openedTab = await chrome.tabs.create({
+      const tabCreateOptions = {
         url: itemToRun.url,
         active: false
-      });
+      };
+      if (Number.isInteger(queueRuntime.controllerWindowId)) {
+        tabCreateOptions.windowId = queueRuntime.controllerWindowId;
+      }
+
+      const openedTab = await chrome.tabs.create(tabCreateOptions);
       openedTabId = openedTab?.id;
     } catch (error) {
       nextQueueItems[nextItemIndex] = markQueueItemFailed(

@@ -9,13 +9,17 @@ test("startQueue starts running queue when pending items exist", async () => {
     queueItems: [createQueueItem({ id: "q1", status: "pending" })]
   });
 
-  const response = await harness.handlers.startQueue();
+  const response = await harness.handlers.startQueue({
+    controllerWindowId: 12
+  });
 
   assert.equal(response.ok, true);
   assert.equal(response.pendingCount, 1);
   assert.equal(response.queueRuntime.status, "running");
+  assert.equal(response.queueRuntime.controllerWindowId, 12);
   assert.deepEqual(harness.calls.runQueueEngineSoon, ["start"]);
   assert.equal(harness.state.queueRuntime.status, "running");
+  assert.equal(harness.state.queueRuntime.controllerWindowId, 12);
 });
 
 test("startQueue reports alreadyRunning when queue is already running", async () => {
@@ -81,12 +85,32 @@ test("resumeQueue restarts paused runtime with pending work", async () => {
     queueItems: [createQueueItem({ id: "q1", status: "pending" })]
   });
 
-  const response = await harness.handlers.resumeQueue();
+  const response = await harness.handlers.resumeQueue({
+    controllerWindowId: 22
+  });
 
   assert.equal(response.ok, true);
   assert.equal(response.queueRuntime.status, "running");
+  assert.equal(response.queueRuntime.controllerWindowId, 22);
   assert.deepEqual(harness.calls.runQueueEngineSoon, ["resume"]);
   assert.equal(harness.state.queueRuntime.status, "running");
+  assert.equal(harness.state.queueRuntime.controllerWindowId, 22);
+});
+
+test("resumeQueue keeps persisted controller window id when no context is supplied", async () => {
+  const harness = createHarness({
+    queueRuntime: createQueueRuntime({
+      status: "paused",
+      controllerWindowId: 55
+    }),
+    queueItems: [createQueueItem({ id: "q1", status: "pending" })]
+  });
+
+  const response = await harness.handlers.resumeQueue();
+
+  assert.equal(response.ok, true);
+  assert.equal(response.queueRuntime.controllerWindowId, 55);
+  assert.equal(harness.state.queueRuntime.controllerWindowId, 55);
 });
 
 test("resumeQueue rejects invalid states and empty paused queue", async () => {
@@ -269,6 +293,7 @@ function createQueueRuntime(overrides = {}) {
     status: "idle",
     activeQueueItemId: null,
     activeTabId: null,
+    controllerWindowId: null,
     updatedAt: Date.now(),
     ...overrides
   };

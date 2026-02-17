@@ -43,6 +43,7 @@ export function createDefaultQueueRuntimeState(now = Date.now()) {
     status: "idle",
     activeQueueItemId: null,
     activeTabId: null,
+    controllerWindowId: null,
     nextRunAt: null,
     updatedAt: now
   };
@@ -232,6 +233,9 @@ export function normalizeQueueRuntime(input) {
       ? input.activeQueueItemId
       : null;
   const activeTabId = Number.isInteger(input.activeTabId) ? input.activeTabId : null;
+  const controllerWindowId = Number.isInteger(input.controllerWindowId)
+    ? input.controllerWindowId
+    : null;
   const nextRunAt =
     Number.isFinite(input.nextRunAt) && input.nextRunAt > 0 ? Math.trunc(input.nextRunAt) : null;
 
@@ -243,6 +247,7 @@ export function normalizeQueueRuntime(input) {
       status,
       activeQueueItemId: null,
       activeTabId: null,
+      controllerWindowId: null,
       nextRunAt: null,
       updatedAt
     };
@@ -253,6 +258,7 @@ export function normalizeQueueRuntime(input) {
       status,
       activeQueueItemId: null,
       activeTabId: null,
+      controllerWindowId,
       nextRunAt,
       updatedAt
     };
@@ -262,6 +268,7 @@ export function normalizeQueueRuntime(input) {
     status,
     activeQueueItemId,
     activeTabId,
+    controllerWindowId,
     nextRunAt: null,
     updatedAt
   };

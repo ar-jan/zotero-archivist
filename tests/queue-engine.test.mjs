@@ -11,7 +11,10 @@ test("runQueueEngineSoon opens a pending item tab and stores active runtime cont
 
   const harness = createQueueEngineHarness({
     queueItems: [createQueueItem({ id: "q1", url: "https://example.com/a" })],
-    queueRuntime: createQueueRuntime({ status: "running" })
+    queueRuntime: createQueueRuntime({
+      status: "running",
+      controllerWindowId: 17
+    })
   });
 
   await harness.queueEngine.runQueueEngineSoon("test-open");
@@ -21,6 +24,7 @@ test("runQueueEngineSoon opens a pending item tab and stores active runtime cont
   assert.equal(queueItems[0].attempts, 1);
   assert.equal(queueRuntime.activeQueueItemId, "q1");
   assert.ok(Number.isInteger(queueRuntime.activeTabId));
+  assert.equal(chromeMock.tabs.created[0].windowId, 17);
   assert.deepEqual(chromeMock.alarms.created.map((entry) => entry.name), [QUEUE_ENGINE_ALARM_NAME]);
 });
 
@@ -325,6 +329,7 @@ function createQueueRuntime(overrides = {}) {
     status: "idle",
     activeQueueItemId: null,
     activeTabId: null,
+    controllerWindowId: null,
     nextRunAt: null,
     updatedAt: Date.now(),
     ...overrides
@@ -380,7 +385,7 @@ function installChromeMock({ tabsById = new Map() } = {}) {
       }
     },
     tabs: {
-      async create({ url, active }) {
+      async create({ url, active, windowId }) {
         const tabId = nextTabId;
         nextTabId += 1;
         const tab = {
@@ -389,7 +394,7 @@ function installChromeMock({ tabsById = new Map() } = {}) {
           status: "loading"
         };
         tabsById.set(tabId, tab);
-        tabs.created.push({ id: tabId, url, active });
+        tabs.created.push({ id: tabId, url, active, windowId });
         return { ...tab };
       },
       async get(tabId) {

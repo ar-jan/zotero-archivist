@@ -4,9 +4,7 @@ const PAYLOADLESS_MESSAGE_TYPES = new Set([
   MESSAGE_TYPES.GET_PANEL_STATE,
   MESSAGE_TYPES.COLLECT_LINKS,
   MESSAGE_TYPES.CLEAR_QUEUE,
-  MESSAGE_TYPES.START_QUEUE,
   MESSAGE_TYPES.PAUSE_QUEUE,
-  MESSAGE_TYPES.RESUME_QUEUE,
   MESSAGE_TYPES.STOP_QUEUE,
   MESSAGE_TYPES.RETRY_FAILED_QUEUE,
   MESSAGE_TYPES.REVERSE_QUEUE
@@ -20,6 +18,11 @@ const ARRAY_PAYLOAD_CONTRACTS = Object.freeze({
 
 const OBJECT_PAYLOAD_CONTRACTS = Object.freeze({
   [MESSAGE_TYPES.SET_QUEUE_SETTINGS]: "queueSettings"
+});
+
+const OPTIONAL_OBJECT_PAYLOAD_CONTRACTS = Object.freeze({
+  [MESSAGE_TYPES.START_QUEUE]: "queueRuntimeContext",
+  [MESSAGE_TYPES.RESUME_QUEUE]: "queueRuntimeContext"
 });
 
 export async function routeMessage(message, handlers) {
@@ -45,6 +48,26 @@ function validateMessagePayload(message) {
     if (message.payload !== undefined) {
       return `Message type ${message.type} does not accept a payload.`;
     }
+    return null;
+  }
+
+  const optionalObjectPayloadField = OPTIONAL_OBJECT_PAYLOAD_CONTRACTS[message.type];
+  if (optionalObjectPayloadField) {
+    if (message.payload === undefined) {
+      return null;
+    }
+
+    if (!isPlainObject(message.payload)) {
+      return `Message type ${message.type} requires a payload object when payload is provided.`;
+    }
+
+    if (!isPlainObject(message.payload[optionalObjectPayloadField])) {
+      return (
+        `Message type ${message.type} requires payload.${optionalObjectPayloadField} ` +
+        "to be an object when payload is provided."
+      );
+    }
+
     return null;
   }
 

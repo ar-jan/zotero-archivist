@@ -141,6 +141,7 @@ test("storage repo normalizes malformed queue runtime and writes back", async (t
       status: "running",
       activeQueueItemId: "q1",
       activeTabId: null,
+      controllerWindowId: "12",
       updatedAt: 10
     }
   });
@@ -151,6 +152,7 @@ test("storage repo normalizes malformed queue runtime and writes back", async (t
   assert.equal(queueRuntime.status, "running");
   assert.equal(queueRuntime.activeQueueItemId, null);
   assert.equal(queueRuntime.activeTabId, null);
+  assert.equal(queueRuntime.controllerWindowId, null);
   assert.equal(chromeMock.writes.length, 1);
 });
 

@@ -30,8 +30,8 @@ export async function clearQueueAction() {
   return sendRuntimeMessage(MESSAGE_TYPES.CLEAR_QUEUE);
 }
 
-export async function queueLifecycleAction(messageType) {
-  return sendRuntimeMessage(messageType);
+export async function queueLifecycleAction(messageType, payload = undefined) {
+  return sendRuntimeMessage(messageType, payload);
 }
 
 export async function setSelectorRulesAction(rules) {
@@ -46,6 +46,15 @@ export async function getActiveTabAction() {
     lastFocusedWindow: true
   });
   return tabs[0] ?? null;
+}
+
+export async function getCurrentWindowIdAction() {
+  try {
+    const currentWindow = await chrome.windows.getCurrent();
+    return Number.isInteger(currentWindow?.id) ? currentWindow.id : null;
+  } catch (_error) {
+    return null;
+  }
 }
 
 export async function ensureHostPermissionAction(tabUrl) {

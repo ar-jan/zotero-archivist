@@ -11,6 +11,7 @@ import {
   ensureHostPermissionAction,
   ensureHostPermissionsForUrlsAction,
   getActiveTabAction,
+  getCurrentWindowIdAction,
   getPanelStateAction,
   queueLifecycleAction,
   setCollectedLinksAction,
@@ -86,6 +87,7 @@ const queueController = createQueueController({
   getCollectedLinks: () => panelState.collectedLinks,
   getQueueItems: () => panelState.queueItems,
   getQueueRuntime: () => panelState.queueRuntime,
+  getQueueRuntimeContext,
   queueLifecycleActionImpl: queueLifecycleAction,
   ensureHostPermissionsForUrlsActionImpl: ensureHostPermissionsForUrlsAction,
   authorQueueFromSelectionActionImpl: authorQueueFromSelectionAction,
@@ -513,6 +515,17 @@ function messageFromError(error) {
   }
 
   return null;
+}
+
+async function getQueueRuntimeContext() {
+  const controllerWindowId = await getCurrentWindowIdAction();
+  if (!Number.isInteger(controllerWindowId)) {
+    return null;
+  }
+
+  return {
+    controllerWindowId
+  };
 }
 
 async function refreshIntegrationDiagnostics() {

@@ -32,6 +32,7 @@ export function createQueueController({
   getCollectedLinks,
   getQueueItems,
   getQueueRuntime,
+  getQueueRuntimeContext,
   queueLifecycleActionImpl,
   ensureHostPermissionsForUrlsActionImpl,
   authorQueueFromSelectionActionImpl,
@@ -84,7 +85,14 @@ export function createQueueController({
         return;
       }
 
-      const response = await queueLifecycleActionImpl(messageType);
+      const queueRuntimeContext = await resolveQueueRuntimeContextForLifecycleAction({
+        messageType,
+        getQueueRuntimeContext
+      });
+      const queueLifecyclePayload = queueRuntimeContext
+        ? { queueRuntimeContext }
+        : undefined;
+      const response = await queueLifecycleActionImpl(messageType, queueLifecyclePayload);
 
       if (!response || response.ok !== true) {
         setStatus(resolveErrorMessage(response?.error, messageFromError) ?? config.fallbackErrorMessage);
@@ -256,6 +264,42 @@ export function createQueueController({
     addSelectedLinksToQueue,
     clearQueueItems
   };
+}
+
+async function resolveQueueRuntimeContextForLifecycleAction({
+  messageType,
+  getQueueRuntimeContext
+}) {
+  if (!isQueueRuntimeContextLifecycleAction(messageType)) {
+    return null;
+  }
+
+  if (typeof getQueueRuntimeContext !== "function") {
+    return null;
+  }
+
+  let queueRuntimeContext;
+  try {
+    queueRuntimeContext = await getQueueRuntimeContext();
+  } catch (_error) {
+    return null;
+  }
+
+  if (!queueRuntimeContext || typeof queueRuntimeContext !== "object") {
+    return null;
+  }
+
+  if (!Number.isInteger(queueRuntimeContext.controllerWindowId)) {
+    return null;
+  }
+
+  return {
+    controllerWindowId: queueRuntimeContext.controllerWindowId
+  };
+}
+
+function isQueueRuntimeContextLifecycleAction(messageType) {
+  return messageType === MESSAGE_TYPES.START_QUEUE || messageType === MESSAGE_TYPES.RESUME_QUEUE;
 }
 
 function resolveErrorMessage(error, messageFromError) {

@@ -77,6 +77,51 @@ test("message router treats reverse queue as payloadless", async () => {
   assert.equal(validResponse.ok, true);
 });
 
+test("message router allows optional queue runtime context payload for start and resume", async () => {
+  const noPayloadStartResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.START_QUEUE
+    },
+    {
+      [MESSAGE_TYPES.START_QUEUE]: async () => ({ ok: true })
+    }
+  );
+  assert.equal(noPayloadStartResponse.ok, true);
+
+  const withPayloadResumeResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.RESUME_QUEUE,
+      payload: {
+        queueRuntimeContext: {
+          controllerWindowId: 9
+        }
+      }
+    },
+    {
+      [MESSAGE_TYPES.RESUME_QUEUE]: async () => ({ ok: true })
+    }
+  );
+  assert.equal(withPayloadResumeResponse.ok, true);
+});
+
+test("message router rejects invalid optional queue runtime context payload", async () => {
+  const invalidResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.START_QUEUE,
+      payload: {
+        queueRuntimeContext: null
+      }
+    },
+    {
+      [MESSAGE_TYPES.START_QUEUE]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(invalidResponse.ok, false);
+  assert.equal(invalidResponse.error.code, "BAD_REQUEST");
+  assert.match(invalidResponse.error.message, /payload\.queueRuntimeContext/i);
+});
+
 test("message router validates array payload contracts", async () => {
   const invalidResponse = await routeMessage(
     {

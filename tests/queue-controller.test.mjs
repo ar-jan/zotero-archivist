@@ -5,10 +5,16 @@ import { MESSAGE_TYPES } from "../shared/protocol.js";
 import { createQueueController } from "../sidepanel/queue-controller.js";
 
 test("queue controller starts queue and updates lifecycle status", async () => {
-  const seenMessageTypes = [];
+  const seenMessages = [];
   const harness = createHarness({
-    queueLifecycleActionImpl: async (messageType) => {
-      seenMessageTypes.push(messageType);
+    getQueueRuntimeContext: async () => ({
+      controllerWindowId: 31
+    }),
+    queueLifecycleActionImpl: async (messageType, payload) => {
+      seenMessages.push({
+        messageType,
+        payload
+      });
       return {
         ok: true,
         queueItems: [{ id: "q1", status: "pending", attempts: 0 }],
@@ -19,7 +25,16 @@ test("queue controller starts queue and updates lifecycle status", async () => {
 
   await harness.controller.startQueueProcessing();
 
-  assert.deepEqual(seenMessageTypes, [MESSAGE_TYPES.START_QUEUE]);
+  assert.deepEqual(seenMessages, [
+    {
+      messageType: MESSAGE_TYPES.START_QUEUE,
+      payload: {
+        queueRuntimeContext: {
+          controllerWindowId: 31
+        }
+      }
+    }
+  ]);
   assert.deepEqual(harness.permissionRequests, [["https://example.com/q1"]]);
   assert.equal(harness.statuses.at(-1), "Queue started.");
   assert.deepEqual(harness.lifecycleBusyChanges, [true, false]);
@@ -98,8 +113,11 @@ test("queue controller blocks start when queue host permission preflight is deni
 });
 
 test("queue controller preflights resume with pending and active item urls", async () => {
-  const seenMessageTypes = [];
+  const seenMessages = [];
   const harness = createHarness({
+    getQueueRuntimeContext: async () => ({
+      controllerWindowId: 99
+    }),
     initialQueueRuntime: {
       status: "paused",
       activeQueueItemId: "q-active"
@@ -118,8 +136,11 @@ test("queue controller preflights resume with pending and active item urls", asy
         attempts: 0
       }
     ],
-    queueLifecycleActionImpl: async (messageType) => {
-      seenMessageTypes.push(messageType);
+    queueLifecycleActionImpl: async (messageType, payload) => {
+      seenMessages.push({
+        messageType,
+        payload
+      });
       return {
         ok: true,
         queueItems: [],
@@ -130,7 +151,16 @@ test("queue controller preflights resume with pending and active item urls", asy
 
   await harness.controller.resumeQueueProcessing();
 
-  assert.deepEqual(seenMessageTypes, [MESSAGE_TYPES.RESUME_QUEUE]);
+  assert.deepEqual(seenMessages, [
+    {
+      messageType: MESSAGE_TYPES.RESUME_QUEUE,
+      payload: {
+        queueRuntimeContext: {
+          controllerWindowId: 99
+        }
+      }
+    }
+  ]);
   assert.equal(harness.permissionRequests.length, 1);
   assert.deepEqual(harness.permissionRequests[0], [
     "https://example.com/pending",
@@ -193,7 +223,13 @@ test("queue controller surfaces clear-queue error message", async () => {
 function createHarness({
   initialCollectedLinks = [{ id: "l1", url: "https://example.com", title: "Example", selected: true }],
   initialQueueItems = [{ id: "q1", url: "https://example.com/q1", status: "pending", attempts: 0 }],
-  initialQueueRuntime = { status: "idle", activeQueueItemId: null, activeTabId: null },
+  initialQueueRuntime = {
+    status: "idle",
+    activeQueueItemId: null,
+    activeTabId: null,
+    controllerWindowId: null
+  },
+  getQueueRuntimeContext = async () => null,
   queueLifecycleActionImpl = async () => ({ ok: true, queueItems: [], queueRuntime: { status: "idle" } }),
   ensureHostPermissionsForUrlsActionImpl = async () => ({
     granted: true,
@@ -237,6 +273,7 @@ function createHarness({
     getCollectedLinks: () => collectedLinks,
     getQueueItems: () => queueItems,
     getQueueRuntime: () => queueRuntime,
+    getQueueRuntimeContext,
     queueLifecycleActionImpl,
     ensureHostPermissionsForUrlsActionImpl: async (urls) => {
       permissionRequests.push([...urls]);

@@ -100,22 +100,26 @@ test("normalizeQueueRuntime clears invalid active context", () => {
     status: "idle",
     activeQueueItemId: "x",
     activeTabId: 123,
+    controllerWindowId: 9,
     updatedAt: 1
   });
   assert.equal(idle.status, "idle");
   assert.equal(idle.activeQueueItemId, null);
   assert.equal(idle.activeTabId, null);
+  assert.equal(idle.controllerWindowId, null);
   assert.equal(idle.nextRunAt, null);
 
   const invalidRunning = normalizeQueueRuntime({
     status: "running",
     activeQueueItemId: "x",
     activeTabId: null,
+    controllerWindowId: 45,
     nextRunAt: 1234
   });
   assert.equal(invalidRunning.status, "running");
   assert.equal(invalidRunning.activeQueueItemId, null);
   assert.equal(invalidRunning.activeTabId, null);
+  assert.equal(invalidRunning.controllerWindowId, 45);
   assert.equal(invalidRunning.nextRunAt, 1234);
 });
 
@@ -123,17 +127,20 @@ test("queue helper functions expose expected transitions", () => {
   const now = Date.now();
   const defaultRuntime = createDefaultQueueRuntimeState(now);
   assert.equal(defaultRuntime.status, "idle");
+  assert.equal(defaultRuntime.controllerWindowId, null);
   assert.equal(defaultRuntime.nextRunAt, null);
 
   const activeCleared = clearQueueRuntimeActive({
     status: "running",
     activeQueueItemId: "q1",
     activeTabId: 12,
+    controllerWindowId: 12,
     nextRunAt: 99,
     updatedAt: now
   });
   assert.equal(activeCleared.activeQueueItemId, null);
   assert.equal(activeCleared.activeTabId, null);
+  assert.equal(activeCleared.controllerWindowId, 12);
   assert.equal(activeCleared.nextRunAt, null);
 
   const failed = markQueueItemFailed(
