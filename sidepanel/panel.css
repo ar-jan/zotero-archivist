@@ -36,6 +36,7 @@
   --font-size-md: 13px;
   --font-size-lg: 14px;
   --queue-min-height: 220px;
+  --results-min-height: 96px;
 }
 
 * {
@@ -392,6 +393,33 @@ body {
   flex-direction: column;
 }
 
+.workspace-resizer {
+  align-items: center;
+  cursor: row-resize;
+  display: flex;
+  flex: 0 0 auto;
+  height: 8px;
+  justify-content: center;
+  outline: none;
+  user-select: none;
+}
+
+.workspace-resizer::before {
+  background: var(--border-color);
+  border-radius: 999px;
+  content: "";
+  display: block;
+  height: 2px;
+  transition: background-color 120ms ease-in-out;
+  width: 44px;
+}
+
+.workspace-resizer:hover::before,
+.workspace-resizer.is-dragging::before,
+.workspace-resizer:focus-visible::before {
+  background: var(--border-focus);
+}
+
 .results,
 .queue {
   /* Results & Queue share space inside workspace, but distinct blocks */
@@ -403,12 +431,17 @@ body {
 
 .results {
   flex: 1 1 auto;
+  min-height: var(--results-min-height);
 }
 
 .queue {
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 360px;
+  max-height: none;
+}
+
+.queue.queue-resizable {
+  height: var(--queue-resized-height, calc(var(--queue-min-height) + 96px));
 }
 
 .results .section-body,

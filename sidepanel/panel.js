@@ -50,6 +50,10 @@ const deselectAllLinksButton = document.getElementById("deselect-all-links-butto
 const clearAllLinksButton = document.getElementById("clear-all-links-button");
 const invertLinksButton = document.getElementById("invert-links-button");
 const resultsFilterInput = document.getElementById("results-filter-input");
+const workspaceEl = document.getElementById("workspace");
+const workspaceResizerEl = document.getElementById("workspace-resizer");
+const resultsSectionEl = document.getElementById("results-section");
+const queueSectionEl = document.getElementById("queue-section");
 const queueToggleButton = document.getElementById("queue-toggle-button");
 const queueBodyEl = document.getElementById("queue-body");
 const queueTitleEl = document.getElementById("queue-title");
@@ -81,10 +85,19 @@ const integrationZoteroStatusEl = document.getElementById("integration-zotero-st
 const integrationErrorEl = document.getElementById("integration-error");
 
 const QUEUE_SETTINGS_MILLISECONDS_PER_SECOND = 1000;
+const DEFAULT_QUEUE_RESIZED_HEIGHT_PX = 300;
+const QUEUE_RESIZE_STEP_PX = 24;
+const QUEUE_RESIZE_ACCELERATED_STEP_PX = 64;
+const QUEUE_MIN_BODY_FALLBACK_PX = 220;
+const RESULTS_MIN_SECTION_FALLBACK_PX = 96;
 
 const panelStore = createPanelStore(normalizeFilterQueryValue(resultsFilterInput.value));
 const panelState = panelStore.state;
 let queueSettingsSaveInProgress = false;
+let queueResizedHeightPx = DEFAULT_QUEUE_RESIZED_HEIGHT_PX;
+let activeResizePointerId = null;
+let resizeStartY = 0;
+let resizeStartHeight = 0;
 
 const queueController = createQueueController({
   panelStore,
@@ -240,6 +253,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 initializeSectionToggle(selectorsToggleButton, selectorsBodyEl);
 initializeSectionToggle(resultsToggleButton, resultsBodyEl);
 initializeSectionToggle(queueToggleButton, queueBodyEl);
+initializeWorkspaceResizer();
 renderIntegrationState();
 updateQueueActionState();
 updateQueueSettingsActionState();
@@ -463,6 +477,153 @@ function isQueueBusy() {
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function initializeWorkspaceResizer() {
+  if (
+    !(workspaceEl instanceof HTMLElement) ||
+    !(workspaceResizerEl instanceof HTMLElement) ||
+    !(resultsSectionEl instanceof HTMLElement) ||
+    !(queueSectionEl instanceof HTMLElement) ||
+    !(queueToggleButton instanceof HTMLButtonElement) ||
+    !(queueBodyEl instanceof HTMLElement)
+  ) {
+    return;
+  }
+
+  syncQueueResizableState();
+  window.addEventListener("resize", syncQueueResizableState);
+  queueToggleButton.addEventListener("click", syncQueueResizableState);
+
+  workspaceResizerEl.addEventListener("pointerdown", handleWorkspaceResizerPointerDown);
+  workspaceResizerEl.addEventListener("keydown", handleWorkspaceResizerKeyDown);
+}
+
+function syncQueueResizableState() {
+  if (!(queueSectionEl instanceof HTMLElement) || !(queueBodyEl instanceof HTMLElement)) {
+    return;
+  }
+
+  const queueExpanded = !queueBodyEl.hidden;
+  queueSectionEl.classList.toggle("queue-resizable", queueExpanded);
+  workspaceResizerEl.hidden = !queueExpanded;
+  workspaceResizerEl.setAttribute("aria-hidden", queueExpanded ? "false" : "true");
+
+  if (!queueExpanded) {
+    queueSectionEl.style.removeProperty("--queue-resized-height");
+    return;
+  }
+
+  queueResizedHeightPx = clampQueueSectionHeight(queueResizedHeightPx || DEFAULT_QUEUE_RESIZED_HEIGHT_PX);
+  applyQueueSectionHeight(queueResizedHeightPx);
+}
+
+function handleWorkspaceResizerPointerDown(event) {
+  if (event.button !== 0 || !(queueSectionEl instanceof HTMLElement)) {
+    return;
+  }
+
+  event.preventDefault();
+  const pointerTarget = event.currentTarget;
+  if (!(pointerTarget instanceof HTMLElement)) {
+    return;
+  }
+
+  pointerTarget.setPointerCapture(event.pointerId);
+  activeResizePointerId = event.pointerId;
+  resizeStartY = event.clientY;
+  resizeStartHeight = queueSectionEl.getBoundingClientRect().height;
+  pointerTarget.classList.add("is-dragging");
+  pointerTarget.addEventListener("pointermove", handleWorkspaceResizerPointerMove);
+  pointerTarget.addEventListener("pointerup", handleWorkspaceResizerPointerDone);
+  pointerTarget.addEventListener("pointercancel", handleWorkspaceResizerPointerDone);
+}
+
+function handleWorkspaceResizerPointerMove(event) {
+  if (event.pointerId !== activeResizePointerId) {
+    return;
+  }
+
+  const deltaY = resizeStartY - event.clientY;
+  const nextHeight = clampQueueSectionHeight(resizeStartHeight + deltaY);
+  queueResizedHeightPx = nextHeight;
+  applyQueueSectionHeight(nextHeight);
+}
+
+function handleWorkspaceResizerPointerDone(event) {
+  if (event.pointerId !== activeResizePointerId) {
+    return;
+  }
+
+  const pointerTarget = event.currentTarget;
+  if (!(pointerTarget instanceof HTMLElement)) {
+    return;
+  }
+
+  activeResizePointerId = null;
+  pointerTarget.classList.remove("is-dragging");
+  pointerTarget.removeEventListener("pointermove", handleWorkspaceResizerPointerMove);
+  pointerTarget.removeEventListener("pointerup", handleWorkspaceResizerPointerDone);
+  pointerTarget.removeEventListener("pointercancel", handleWorkspaceResizerPointerDone);
+}
+
+function handleWorkspaceResizerKeyDown(event) {
+  if (queueBodyEl.hidden) {
+    return;
+  }
+
+  const step = event.shiftKey ? QUEUE_RESIZE_ACCELERATED_STEP_PX : QUEUE_RESIZE_STEP_PX;
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    queueResizedHeightPx = clampQueueSectionHeight(queueResizedHeightPx + step);
+    applyQueueSectionHeight(queueResizedHeightPx);
+    return;
+  }
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    queueResizedHeightPx = clampQueueSectionHeight(queueResizedHeightPx - step);
+    applyQueueSectionHeight(queueResizedHeightPx);
+  }
+}
+
+function applyQueueSectionHeight(heightPx) {
+  if (!(queueSectionEl instanceof HTMLElement)) {
+    return;
+  }
+  queueSectionEl.style.setProperty("--queue-resized-height", `${Math.round(heightPx)}px`);
+}
+
+function clampQueueSectionHeight(proposedHeightPx) {
+  const numericHeight = Number.isFinite(proposedHeightPx) ? proposedHeightPx : DEFAULT_QUEUE_RESIZED_HEIGHT_PX;
+  const queueMinHeight = readCssPixels("--queue-min-height", QUEUE_MIN_BODY_FALLBACK_PX);
+  const resultsMinHeight = resultsBodyEl.hidden
+    ? 0
+    : readCssPixels("--results-min-height", RESULTS_MIN_SECTION_FALLBACK_PX);
+  const workspaceResizerHeight = workspaceResizerEl instanceof HTMLElement
+    ? workspaceResizerEl.getBoundingClientRect().height
+    : 0;
+  const workspaceHeight = workspaceEl instanceof HTMLElement ? workspaceEl.getBoundingClientRect().height : 0;
+  const queueHeaderHeight = queueSectionEl instanceof HTMLElement
+    ? queueSectionEl.querySelector(".section-header")?.getBoundingClientRect().height ?? 0
+    : 0;
+
+  const minQueueSectionHeight = queueHeaderHeight + queueMinHeight;
+  const maxQueueSectionHeight = Math.max(
+    minQueueSectionHeight,
+    workspaceHeight - resultsMinHeight - workspaceResizerHeight
+  );
+  return Math.max(minQueueSectionHeight, Math.min(maxQueueSectionHeight, numericHeight));
+}
+
+function readCssPixels(variableName, fallback) {
+  try {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  } catch (_error) {
+    return fallback;
+  }
 }
 
 function renderQueueSettingsForm(queueSettings) {

@@ -40,8 +40,8 @@
         </div>
       </section>
 
-      <div class="workspace">
-        <section class="section results" aria-live="polite">
+      <div id="workspace" class="workspace">
+        <section id="results-section" class="section results" aria-live="polite">
           <div class="section-header">
             <h2 class="section-heading">
               <button
@@ -77,7 +77,16 @@
           </div>
         </section>
 
-        <section class="section queue" aria-live="polite">
+        <div
+          id="workspace-resizer"
+          class="workspace-resizer"
+          role="separator"
+          aria-label="Resize queue section"
+          aria-orientation="horizontal"
+          tabindex="0"
+        ></div>
+
+        <section id="queue-section" class="section queue" aria-live="polite">
           <div class="section-header">
             <div class="queue-header-title-group">
               <h2 class="section-heading">
