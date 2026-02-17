@@ -124,6 +124,7 @@ body {
   align-items: center;
   padding: var(--space-xs) var(--space-md);
   min-height: 32px;
+  gap: var(--space-sm);
 }
 
 .section-heading button.section-toggle {
@@ -154,6 +155,15 @@ body {
 .section-actions {
   display: flex;
   gap: var(--space-xs);
+}
+
+.section-meta {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .icon-button {
@@ -204,6 +214,12 @@ body {
 
 .selector-rule-item:last-child {
   border-bottom: none;
+}
+
+.rules-summary-text {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 
 /* 3. Workspace (Results + Queue) */
@@ -336,6 +352,14 @@ body {
 .queue-global-controls {
   display: flex;
   gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.queue-header-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  min-width: 0;
 }
 
 .action-button.small {
@@ -430,6 +454,7 @@ body {
 }
 
 /* Queue Status Items */
+.queue-item.queue-item-active,
 .queue-item.active {
   background: #fffbf2;
   border-left: 3px solid var(--warning-color);
@@ -458,6 +483,23 @@ body {
 .queue-status-failed {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+.queue-status-opening_tab,
+.queue-status-saving_snapshot {
+  background: #fff5dd;
+  color: #7a4e0a;
+}
+
+.queue-status-cancelled {
+  background: #fdecec;
+  color: #8c1d1d;
+}
+
+.queue-runtime-status {
+  margin: var(--space-sm) var(--space-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 
 /* 4. Footer */

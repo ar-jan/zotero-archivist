@@ -85,10 +85,14 @@
         <!-- Queue Section -->
         <section class="section queue" aria-live="polite">
           <div class="section-header">
-             <h2 class="section-heading" id="queue-title">Queue</h2>
+             <div class="queue-header-title-group">
+               <h2 class="section-heading" id="queue-title">Queue</h2>
+               <span id="queue-summary" class="section-meta"></span>
+             </div>
              <div class="queue-global-controls">
                 <button id="start-queue-button" type="button" class="action-button small">Start</button>
                 <button id="pause-queue-button" type="button" class="action-button small">Pause</button>
+                <button id="resume-queue-button" type="button" class="action-button small">Resume</button>
                 <button id="stop-queue-button" type="button" class="action-button small">Stop</button>
              </div>
           </div>
@@ -100,6 +104,7 @@
              <div class="queue-toolbar-secondary">
                <button id="clear-queue-button" type="button" class="text-button danger">Clear Queue</button>
                <button id="clear-archived-queue-button" type="button" class="text-button">Clear Archived</button>
+               <button id="reverse-queue-button" type="button" class="text-button">Reverse</button>
                <button id="retry-failed-queue-button" type="button" class="text-button">Retry Failed</button>
              </div>
 
