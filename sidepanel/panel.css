@@ -332,6 +332,10 @@ body {
   padding-top: var(--space-sm);
 }
 
+.rule-collapsible-fields[hidden] {
+  display: none;
+}
+
 .rule-field {
   align-items: center;
   display: grid;
