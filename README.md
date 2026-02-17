@@ -2,14 +2,16 @@
 
 A Chromium browser extension to collect links from a web page and archive selected pages to Zotero via the Zotero Connector browser plugin.
 
-## Installation
+## Prerequisites
 
 - Have [Zotero](https://www.zotero.org/download/) installed
 - Have the official [Zotero Connector](https://chromewebstore.google.com/detail/zotero-connector/ekhagklcjbdpajgpjgmbionohlpdbjgc) installed
-- Install the `zotero-archivist` Chromium extension:
-  * Git clone this repository or download and unpack a ZIP
-  * Enable `Developer mode` on your browser's extension page
-  * Click `Load unpacked` and point it at your copy of `zotero-archivist`
+
+## Installation
+
+- Git clone this repository (or download and unpack the ZIP version)
+- Enable `Developer mode` on your browser's extension page
+- Click `Load unpacked` and point it at your copy of `zotero-archivist`
 
 ## Usage
 
