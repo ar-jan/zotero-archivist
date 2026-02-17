@@ -183,8 +183,17 @@ function createSelectorRuleItem(rule) {
   const headingButton = document.createElement("button");
   headingButton.className = "rule-heading-toggle";
   headingButton.type = "button";
-  headingButton.textContent = formatRuleHeading(rule.name ?? "", rule.id);
   headingButton.setAttribute("aria-expanded", "false");
+  headingButton.setAttribute("title", "Show or hide rule details");
+
+  const headingTitle = document.createElement("span");
+  headingTitle.className = "rule-heading-title";
+  headingTitle.textContent = formatRuleHeading(rule.name ?? "", rule.id);
+
+  const headingHint = document.createElement("span");
+  headingHint.className = "rule-heading-hint";
+  headingHint.textContent = "Show details";
+  headingButton.append(headingTitle, headingHint);
 
   const toggleLabel = document.createElement("label");
   toggleLabel.className = "rule-toggle";
@@ -207,7 +216,7 @@ function createSelectorRuleItem(rule) {
   const nameInput = nameField.querySelector(".rule-name-input");
   if (nameInput instanceof HTMLInputElement) {
     nameInput.addEventListener("input", () => {
-      headingButton.textContent = formatRuleHeading(nameInput.value, rule.id);
+      headingTitle.textContent = formatRuleHeading(nameInput.value, rule.id);
     });
   }
 
@@ -219,6 +228,7 @@ function createSelectorRuleItem(rule) {
   headingButton.addEventListener("click", () => {
     const nextExpanded = headingButton.getAttribute("aria-expanded") !== "true";
     headingButton.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+    headingHint.textContent = nextExpanded ? "Hide details" : "Show details";
     fields.hidden = !nextExpanded;
   });
 
