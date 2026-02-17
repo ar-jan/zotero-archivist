@@ -222,6 +222,94 @@ test("handleQueueTabRemoved fails active item and clears runtime context", async
   assert.equal(queueRuntime.status, "idle");
 });
 
+test("handleQueueTabRemoved does not overwrite archived item after in-flight save succeeds", async (t) => {
+  const chromeMock = installChromeMock({
+    tabsById: new Map([
+      [55, { id: 55, url: "https://example.com/a", status: "complete" }]
+    ])
+  });
+  t.after(() => chromeMock.restore());
+
+  let saveStarted = false;
+  let resolveSave;
+  const saveResultPromise = new Promise((resolve) => {
+    resolveSave = resolve;
+  });
+
+  let releaseFailedWrite;
+  const harness = createQueueEngineHarness({
+    queueItems: [createQueueItem({ id: "q1", url: "https://example.com/a", status: "opening_tab" })],
+    queueRuntime: createQueueRuntime({
+      status: "running",
+      activeQueueItemId: "q1",
+      activeTabId: 55
+    }),
+    saveQueueItemWithProvider: async () => {
+      saveStarted = true;
+      return saveResultPromise;
+    },
+    saveQueueItemsImpl: async ({ nextQueueItems, commit }) => {
+      if (nextQueueItems[0]?.status !== "failed") {
+        return commit(nextQueueItems);
+      }
+
+      let committedFailedWrite = null;
+      await new Promise((resolve) => {
+        releaseFailedWrite = () => {
+          committedFailedWrite = commit(nextQueueItems);
+          resolve();
+        };
+      });
+      return committedFailedWrite;
+    }
+  });
+
+  const runPromise = harness.queueEngine.runQueueEngineSoon("test-save-tab-removed-race");
+  for (let attempt = 0; attempt < 10 && !saveStarted; attempt += 1) {
+    await Promise.resolve();
+  }
+  assert.equal(saveStarted, true);
+
+  const tabRemovedPromise = harness.queueEngine.handleQueueTabRemoved(55);
+  resolveSave({ ok: true });
+
+  await runPromise;
+  if (typeof releaseFailedWrite === "function") {
+    releaseFailedWrite();
+  }
+  await tabRemovedPromise;
+  await harness.queueEngine.waitForIdle();
+
+  const { queueItems, queueRuntime } = harness.getState();
+  assert.equal(queueItems[0].status, "archived");
+  assert.equal(queueItems[0].lastError, undefined);
+  assert.equal(queueRuntime.status, "idle");
+});
+
+test("runQueueEngineSoon does not fail non-active item when active tab is missing", async (t) => {
+  const chromeMock = installChromeMock();
+  t.after(() => chromeMock.restore());
+
+  const harness = createQueueEngineHarness({
+    queueItems: [createQueueItem({ id: "q1", url: "https://example.com/a", status: "archived" })],
+    queueRuntime: createQueueRuntime({
+      status: "running",
+      activeQueueItemId: "q1",
+      activeTabId: 56
+    })
+  });
+
+  await harness.queueEngine.runQueueEngineSoon("test-active-tab-missing-with-archived-item");
+  await harness.queueEngine.waitForIdle();
+
+  const { queueItems, queueRuntime } = harness.getState();
+  assert.equal(queueItems[0].status, "archived");
+  assert.equal(queueItems[0].lastError, undefined);
+  assert.equal(queueRuntime.status, "idle");
+  assert.equal(queueRuntime.activeQueueItemId, null);
+  assert.equal(queueRuntime.activeTabId, null);
+});
+
 test("recoverQueueEngineState resumes pending work after restart", async (t) => {
   const chromeMock = installChromeMock();
   t.after(() => chromeMock.restore());
@@ -250,7 +338,8 @@ function createQueueEngineHarness({
     interItemDelayJitterMs: 0
   },
   randomImpl = () => 0.5,
-  saveQueueItemWithProvider = async () => ({ ok: true })
+  saveQueueItemWithProvider = async () => ({ ok: true }),
+  saveQueueItemsImpl = null
 } = {}) {
   let currentQueueItems = queueItems.map((item) => ({ ...item }));
   let currentQueueRuntime = { ...queueRuntime };
@@ -282,6 +371,11 @@ function createQueueEngineHarness({
     }
   };
 
+  function commitQueueItems(nextQueueItems) {
+    currentQueueItems = nextQueueItems.map((item) => ({ ...item }));
+    return currentQueueItems.map((item) => ({ ...item }));
+  }
+
   const queueEngine = createQueueEngine({
     getQueueRuntime: async () => ({ ...currentQueueRuntime }),
     saveQueueRuntime: async (nextQueueRuntime) => {
@@ -290,8 +384,19 @@ function createQueueEngineHarness({
     },
     getQueueItems: async () => currentQueueItems.map((item) => ({ ...item })),
     saveQueueItems: async (nextQueueItems) => {
-      currentQueueItems = nextQueueItems.map((item) => ({ ...item }));
-      return currentQueueItems;
+      const normalizedNextQueueItems = nextQueueItems.map((item) => ({ ...item }));
+      if (typeof saveQueueItemsImpl === "function") {
+        const customResult = await saveQueueItemsImpl({
+          nextQueueItems: normalizedNextQueueItems,
+          commit: commitQueueItems
+        });
+        if (Array.isArray(customResult)) {
+          return customResult.map((item) => ({ ...item }));
+        }
+        return currentQueueItems.map((item) => ({ ...item }));
+      }
+
+      return commitQueueItems(normalizedNextQueueItems);
     },
     getQueueSettings: async () => ({ ...queueSettings }),
     randomImpl,

@@ -27,14 +27,18 @@ export function createQueueEngine({
   let queueEngineRun = Promise.resolve();
   let queueEngineDelayTimerId = null;
 
-  function runQueueEngineSoon(trigger) {
+  function enqueueQueueEngineTask(trigger, task) {
     queueEngineRun = queueEngineRun
       .catch(() => undefined)
-      .then(() => runQueueEngine(trigger))
+      .then(() => task())
       .catch((error) => {
-        console.error("[zotero-archivist] Queue engine run failed.", { trigger, error });
+        console.error("[zotero-archivist] Queue engine task failed.", { trigger, error });
       });
     return queueEngineRun;
+  }
+
+  function runQueueEngineSoon(trigger) {
+    return enqueueQueueEngineTask(trigger, () => runQueueEngine(trigger));
   }
 
   async function runQueueEngine(_trigger) {
@@ -79,8 +83,10 @@ export function createQueueEngine({
 
       if (activeTabState === "missing") {
         queueItems = [...queueItems];
-        queueItems[activeIndex] = markQueueItemFailed(queueItems[activeIndex], QUEUE_TAB_CLOSED_MESSAGE);
-        await saveQueueItems(queueItems);
+        if (isQueueItemActiveStatus(queueItems[activeIndex].status)) {
+          queueItems[activeIndex] = markQueueItemFailed(queueItems[activeIndex], QUEUE_TAB_CLOSED_MESSAGE);
+          await saveQueueItems(queueItems);
+        }
         await scheduleNextQueueRun("active-tab-missing");
         return;
       }
@@ -227,6 +233,12 @@ export function createQueueEngine({
   }
 
   async function handleQueueAlarm() {
+    return enqueueQueueEngineTask("alarm", async () => {
+      await handleQueueAlarmInternal();
+    });
+  }
+
+  async function handleQueueAlarmInternal() {
     const queueRuntime = await getQueueRuntime();
     if (queueRuntime.status !== "running") {
       return;
@@ -290,7 +302,17 @@ export function createQueueEngine({
   }
 
   async function handleQueueTabRemoved(tabId) {
+    return enqueueQueueEngineTask("tab-removed", async () => {
+      await handleQueueTabRemovedInternal(tabId);
+    });
+  }
+
+  async function handleQueueTabRemovedInternal(tabId) {
     const queueRuntime = await getQueueRuntime();
+    if (queueRuntime.status !== "running") {
+      return;
+    }
+
     if (!Number.isInteger(queueRuntime.activeTabId) || queueRuntime.activeTabId !== tabId) {
       return;
     }
