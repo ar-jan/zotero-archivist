@@ -4,6 +4,7 @@
   --bg-surface: #ffffff;
   --bg-hover: #f3f4f6;
   --bg-active: #e5e7eb;
+  --bg-section-heading: #b3b3b3;
 
   --text-main: #1f2937;
   --text-secondary: #6b7280;
@@ -133,6 +134,9 @@ body {
   margin: 0;
   font-size: var(--font-size-sm);
   font-weight: 600;
+  background-color: var(--bg-section-heading);
+  border-radius: 4px;
+  padding: 2px 6px;
 }
 
 .section-heading button.section-toggle {
