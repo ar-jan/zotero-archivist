@@ -41,6 +41,11 @@ test("selector and results sections keep toggle markup contract", () => {
     /id="results-toggle-button"[\s\S]*aria-controls="results-body"/,
     "results toggle button should control results-body"
   );
+  assert.match(
+    panelMarkup,
+    /id="queue-toggle-button"[\s\S]*aria-controls="queue-body"/,
+    "queue toggle button should control queue-body"
+  );
 });
 
 test("panel.html does not contain duplicate ids", () => {

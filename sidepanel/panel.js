@@ -50,6 +50,8 @@ const deselectAllLinksButton = document.getElementById("deselect-all-links-butto
 const clearAllLinksButton = document.getElementById("clear-all-links-button");
 const invertLinksButton = document.getElementById("invert-links-button");
 const resultsFilterInput = document.getElementById("results-filter-input");
+const queueToggleButton = document.getElementById("queue-toggle-button");
+const queueBodyEl = document.getElementById("queue-body");
 const queueTitleEl = document.getElementById("queue-title");
 const queueSummaryEl = document.getElementById("queue-summary");
 const queueRuntimeStatusEl = document.getElementById("queue-runtime-status");
@@ -237,6 +239,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 initializeSectionToggle(selectorsToggleButton, selectorsBodyEl);
 initializeSectionToggle(resultsToggleButton, resultsBodyEl);
+initializeSectionToggle(queueToggleButton, queueBodyEl);
 renderIntegrationState();
 updateQueueActionState();
 updateQueueSettingsActionState();

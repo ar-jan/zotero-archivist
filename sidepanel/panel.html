@@ -80,7 +80,17 @@
         <section class="section queue" aria-live="polite">
           <div class="section-header">
             <div class="queue-header-title-group">
-              <h2 class="section-heading" id="queue-title">Queue</h2>
+              <h2 class="section-heading">
+                <button
+                  id="queue-toggle-button"
+                  class="section-toggle"
+                  type="button"
+                  aria-expanded="true"
+                  aria-controls="queue-body"
+                >
+                  <span id="queue-title">Queue</span>
+                </button>
+              </h2>
               <span id="queue-summary" class="section-meta"></span>
             </div>
             <div class="queue-global-controls">
