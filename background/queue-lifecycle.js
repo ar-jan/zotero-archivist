@@ -185,10 +185,31 @@ export function createQueueLifecycleHandlers({
     });
   }
 
+  async function reverseQueue() {
+    const queueRuntime = await getQueueRuntime();
+    if (queueRuntime.status === "running") {
+      return createError(ERROR_CODES.BAD_REQUEST, "Pause or stop the queue before reversing it.");
+    }
+
+    const queueItems = await getQueueItems();
+    if (queueItems.length < 2) {
+      return createError(ERROR_CODES.BAD_REQUEST, "Queue needs at least two items to reverse.");
+    }
+
+    const nextQueueItems = [...queueItems].reverse();
+    await saveQueueItems(nextQueueItems);
+
+    return createSuccess({
+      queueItems: nextQueueItems,
+      queueRuntime
+    });
+  }
+
   return {
     clearQueue,
     pauseQueue,
     resumeQueue,
+    reverseQueue,
     retryFailedQueue,
     startQueue,
     stopQueue

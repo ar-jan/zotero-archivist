@@ -50,6 +50,33 @@ test("message router rejects payload on payloadless messages", async () => {
   assert.match(response.error.message, /does not accept a payload/i);
 });
 
+test("message router treats reverse queue as payloadless", async () => {
+  const invalidResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.REVERSE_QUEUE,
+      payload: {}
+    },
+    {
+      [MESSAGE_TYPES.REVERSE_QUEUE]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(invalidResponse.ok, false);
+  assert.equal(invalidResponse.error.code, "BAD_REQUEST");
+  assert.match(invalidResponse.error.message, /does not accept a payload/i);
+
+  const validResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.REVERSE_QUEUE
+    },
+    {
+      [MESSAGE_TYPES.REVERSE_QUEUE]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(validResponse.ok, true);
+});
+
 test("message router validates array payload contracts", async () => {
   const invalidResponse = await routeMessage(
     {

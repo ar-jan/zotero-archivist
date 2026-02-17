@@ -20,6 +20,10 @@ const QUEUE_LIFECYCLE_CONFIG = Object.freeze({
   [MESSAGE_TYPES.RETRY_FAILED_QUEUE]: Object.freeze({
     fallbackErrorMessage: "Failed to retry queue items.",
     successStatusMessage: "Retry queued for failed items."
+  }),
+  [MESSAGE_TYPES.REVERSE_QUEUE]: Object.freeze({
+    fallbackErrorMessage: "Failed to reverse queue order.",
+    successStatusMessage: "Queue order reversed."
   })
 });
 
@@ -57,6 +61,10 @@ export function createQueueController({
 
   async function retryFailedQueueItems() {
     await runQueueLifecycleAction(MESSAGE_TYPES.RETRY_FAILED_QUEUE);
+  }
+
+  async function reverseQueueItems() {
+    await runQueueLifecycleAction(MESSAGE_TYPES.REVERSE_QUEUE);
   }
 
   async function runQueueLifecycleAction(messageType) {
@@ -244,6 +252,7 @@ export function createQueueController({
     resumeQueueProcessing,
     stopQueueProcessing,
     retryFailedQueueItems,
+    reverseQueueItems,
     addSelectedLinksToQueue,
     clearQueueItems
   };

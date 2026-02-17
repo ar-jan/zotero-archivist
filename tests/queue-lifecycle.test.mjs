@@ -169,6 +169,53 @@ test("retryFailedQueue rejects when running or nothing retriable", async () => {
   assert.equal(noneResponse.error.code, "BAD_REQUEST");
 });
 
+test("reverseQueue reverses queue item order when queue is not running", async () => {
+  const harness = createHarness({
+    queueRuntime: createQueueRuntime({
+      status: "paused",
+      activeQueueItemId: "q2",
+      activeTabId: 77
+    }),
+    queueItems: [
+      createQueueItem({ id: "q1", status: "pending" }),
+      createQueueItem({ id: "q2", status: "saving_snapshot" }),
+      createQueueItem({ id: "q3", status: "failed", lastError: "save failed" })
+    ]
+  });
+
+  const response = await harness.handlers.reverseQueue();
+
+  assert.equal(response.ok, true);
+  assert.deepEqual(response.queueItems.map((item) => item.id), ["q3", "q2", "q1"]);
+  assert.deepEqual(harness.state.queueItems.map((item) => item.id), ["q3", "q2", "q1"]);
+  assert.equal(response.queueRuntime.status, "paused");
+  assert.equal(response.queueRuntime.activeQueueItemId, "q2");
+  assert.equal(response.queueRuntime.activeTabId, 77);
+});
+
+test("reverseQueue rejects when queue is running or has fewer than two items", async () => {
+  const runningHarness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "running" }),
+    queueItems: [
+      createQueueItem({ id: "q1", status: "pending" }),
+      createQueueItem({ id: "q2", status: "pending" })
+    ]
+  });
+
+  const runningResponse = await runningHarness.handlers.reverseQueue();
+  assert.equal(runningResponse.ok, false);
+  assert.equal(runningResponse.error.code, "BAD_REQUEST");
+
+  const tooShortHarness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "idle" }),
+    queueItems: [createQueueItem({ id: "q1", status: "pending" })]
+  });
+
+  const tooShortResponse = await tooShortHarness.handlers.reverseQueue();
+  assert.equal(tooShortResponse.ok, false);
+  assert.equal(tooShortResponse.error.code, "BAD_REQUEST");
+});
+
 function createHarness({
   queueRuntime = createQueueRuntime(),
   queueItems = []

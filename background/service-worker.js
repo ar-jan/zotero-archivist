@@ -71,6 +71,7 @@ const messageHandlers = {
   [MESSAGE_TYPES.RESUME_QUEUE]: async () => queueLifecycleHandlers.resumeQueue(),
   [MESSAGE_TYPES.STOP_QUEUE]: async () => queueLifecycleHandlers.stopQueue(),
   [MESSAGE_TYPES.RETRY_FAILED_QUEUE]: async () => queueLifecycleHandlers.retryFailedQueue(),
+  [MESSAGE_TYPES.REVERSE_QUEUE]: async () => queueLifecycleHandlers.reverseQueue(),
   [MESSAGE_TYPES.SET_SELECTOR_RULES]: async (message) => setSelectorRules(message.payload?.rules)
 };
 

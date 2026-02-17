@@ -43,6 +43,37 @@ test("queue controller retry status shows retried count", async () => {
   assert.equal(harness.statuses.at(-1), "Queued 2 item(s) for retry.");
 });
 
+test("queue controller reverses queue order and reports lifecycle status", async () => {
+  const seenMessageTypes = [];
+  const harness = createHarness({
+    initialQueueItems: [
+      { id: "q1", url: "https://example.com/q1", status: "pending", attempts: 0 },
+      { id: "q2", url: "https://example.com/q2", status: "failed", attempts: 1 }
+    ],
+    queueLifecycleActionImpl: async (messageType) => {
+      seenMessageTypes.push(messageType);
+      return {
+        ok: true,
+        queueItems: [
+          { id: "q2", url: "https://example.com/q2", status: "failed", attempts: 1 },
+          { id: "q1", url: "https://example.com/q1", status: "pending", attempts: 0 }
+        ],
+        queueRuntime: { status: "idle", activeQueueItemId: null, activeTabId: null }
+      };
+    }
+  });
+
+  await harness.controller.reverseQueueItems();
+
+  assert.deepEqual(seenMessageTypes, [MESSAGE_TYPES.REVERSE_QUEUE]);
+  assert.equal(harness.permissionRequests.length, 0);
+  assert.equal(harness.statuses.at(-1), "Queue order reversed.");
+  assert.deepEqual(harness.lifecycleBusyChanges, [true, false]);
+  assert.equal(harness.queueActionStateUpdates >= 2, true);
+  assert.equal(harness.queueItemsWrites.length, 1);
+  assert.equal(harness.queueRuntimeWrites.length, 1);
+});
+
 test("queue controller blocks start when queue host permission preflight is denied", async () => {
   const seenMessageTypes = [];
   const harness = createHarness({

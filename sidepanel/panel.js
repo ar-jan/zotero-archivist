@@ -54,6 +54,7 @@ const queueRuntimeStatusEl = document.getElementById("queue-runtime-status");
 const queueListEl = document.getElementById("queue-list");
 const addSelectedToQueueButton = document.getElementById("add-selected-to-queue-button");
 const clearQueueButton = document.getElementById("clear-queue-button");
+const reverseQueueButton = document.getElementById("reverse-queue-button");
 const startQueueButton = document.getElementById("start-queue-button");
 const pauseQueueButton = document.getElementById("pause-queue-button");
 const resumeQueueButton = document.getElementById("resume-queue-button");
@@ -172,6 +173,10 @@ addSelectedToQueueButton.addEventListener("click", () => {
 
 clearQueueButton.addEventListener("click", () => {
   void queueController.clearQueueItems();
+});
+
+reverseQueueButton.addEventListener("click", () => {
+  void queueController.reverseQueueItems();
 });
 
 startQueueButton.addEventListener("click", () => {
@@ -400,6 +405,8 @@ function updateQueueActionState() {
   addSelectedToQueueButton.disabled = queueBusy || selectedCount === 0;
   clearQueueButton.disabled =
     queueBusy || panelState.queueItems.length === 0 || panelState.queueRuntime.status === "running";
+  reverseQueueButton.disabled =
+    queueBusy || panelState.queueRuntime.status === "running" || panelState.queueItems.length < 2;
   startQueueButton.disabled =
     queueBusy || panelState.queueRuntime.status !== "idle" || queueCounts.pendingCount === 0;
   pauseQueueButton.disabled = queueBusy || panelState.queueRuntime.status !== "running";
