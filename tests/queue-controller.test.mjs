@@ -206,6 +206,54 @@ test("queue controller no-ops clear when queue is already empty", async () => {
   assert.equal(harness.statuses.at(-1), "Queue is already empty.");
 });
 
+test("queue controller removes queue item and reports status", async () => {
+  const seenMessages = [];
+  const harness = createHarness({
+    initialQueueItems: [
+      { id: "q1", url: "https://example.com/q1", status: "pending", attempts: 0 },
+      { id: "q2", url: "https://example.com/q2", status: "failed", attempts: 1 }
+    ],
+    queueLifecycleActionImpl: async (messageType, payload) => {
+      seenMessages.push({
+        messageType,
+        payload
+      });
+      return {
+        ok: true,
+        queueItems: [{ id: "q1", url: "https://example.com/q1", status: "pending", attempts: 0 }],
+        queueRuntime: { status: "idle", activeQueueItemId: null, activeTabId: null }
+      };
+    }
+  });
+
+  await harness.controller.removeQueueItem("q2");
+
+  assert.deepEqual(seenMessages, [
+    {
+      messageType: MESSAGE_TYPES.REMOVE_QUEUE_ITEM,
+      payload: {
+        queueItem: {
+          id: "q2"
+        }
+      }
+    }
+  ]);
+  assert.equal(harness.statuses.at(-1), "Removed queue item.");
+  assert.deepEqual(harness.clearingBusyChanges, [true, false]);
+  assert.equal(harness.queueActionStateUpdates >= 2, true);
+  assert.equal(harness.queueItemsWrites.length, 1);
+  assert.equal(harness.queueRuntimeWrites.length, 1);
+});
+
+test("queue controller validates remove queue item id", async () => {
+  const harness = createHarness();
+
+  await harness.controller.removeQueueItem("   ");
+
+  assert.equal(harness.statuses.at(-1), "Queue item id is required.");
+  assert.deepEqual(harness.clearingBusyChanges, []);
+});
+
 test("queue controller no-ops clear archived when no archived items exist", async () => {
   const harness = createHarness({
     initialQueueItems: [{ id: "q1", status: "pending", attempts: 0 }]

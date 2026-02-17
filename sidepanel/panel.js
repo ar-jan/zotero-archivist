@@ -208,6 +208,21 @@ retryFailedQueueButton.addEventListener("click", () => {
   void queueController.retryFailedQueueItems();
 });
 
+queueListEl.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const removeButton = target.closest(".queue-item-remove-button");
+  if (!(removeButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const queueItemId = removeButton.dataset.queueItemId;
+  void queueController.removeQueueItem(queueItemId);
+});
+
 saveQueueSettingsButton.addEventListener("click", () => {
   void saveQueueSettings();
 });
@@ -430,6 +445,13 @@ function updateQueueActionState() {
     queueBusy ||
     panelState.queueRuntime.status === "running" ||
     queueCounts.retriableCount === 0;
+
+  const queueItemRemoveDisabled = queueBusy || panelState.queueRuntime.status === "running";
+  for (const removeButton of queueListEl.querySelectorAll(".queue-item-remove-button")) {
+    if (removeButton instanceof HTMLButtonElement) {
+      removeButton.disabled = queueItemRemoveDisabled;
+    }
+  }
 }
 
 function isQueueBusy() {

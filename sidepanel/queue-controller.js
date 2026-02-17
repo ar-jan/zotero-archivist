@@ -255,6 +255,43 @@ export function createQueueController({
     }
   }
 
+  async function removeQueueItem(queueItemId) {
+    const normalizedQueueItemId =
+      typeof queueItemId === "string" ? queueItemId.trim() : "";
+    if (normalizedQueueItemId.length === 0) {
+      setStatus("Queue item id is required.");
+      return;
+    }
+
+    panelStore.setQueueClearingInProgress(true);
+    updateQueueActionState();
+
+    try {
+      const response = await queueLifecycleActionImpl(MESSAGE_TYPES.REMOVE_QUEUE_ITEM, {
+        queueItem: {
+          id: normalizedQueueItemId
+        }
+      });
+
+      if (!response || response.ok !== true) {
+        setStatus(resolveErrorMessage(response?.error, messageFromError) ?? "Failed to remove queue item.");
+        return;
+      }
+
+      setQueueItemsState(response.queueItems);
+      if (response.queueRuntime) {
+        setQueueRuntimeState(response.queueRuntime);
+      }
+      setStatus("Removed queue item.");
+    } catch (error) {
+      logger.error("[zotero-archivist] Failed to remove queue item.", error);
+      setStatus("Failed to remove queue item.");
+    } finally {
+      panelStore.setQueueClearingInProgress(false);
+      updateQueueActionState();
+    }
+  }
+
   async function clearArchivedQueueItems() {
     const archivedCount = getQueueItems().filter((item) => item.status === "archived").length;
     if (archivedCount === 0) {
@@ -302,6 +339,7 @@ export function createQueueController({
     retryFailedQueueItems,
     reverseQueueItems,
     addSelectedLinksToQueue,
+    removeQueueItem,
     clearQueueItems,
     clearArchivedQueueItems
   };

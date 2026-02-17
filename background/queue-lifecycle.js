@@ -58,6 +58,52 @@ export function createQueueLifecycleHandlers({
     });
   }
 
+  async function removeQueueItem(queueItem = undefined) {
+    const queueItemId = normalizeQueueItemId(queueItem);
+    if (queueItemId === null) {
+      return createError(ERROR_CODES.BAD_REQUEST, "Queue item id is required.");
+    }
+
+    const queueRuntime = await getQueueRuntime();
+    if (queueRuntime.status === "running") {
+      return createError(ERROR_CODES.BAD_REQUEST, "Pause or stop the queue before removing items.");
+    }
+
+    const queueItems = await getQueueItems();
+    const removeIndex = queueItems.findIndex((item) => item.id === queueItemId);
+    if (removeIndex < 0) {
+      return createError(ERROR_CODES.QUEUE_ITEM_NOT_FOUND, "Queue item was not found.");
+    }
+
+    const nextQueueItems = [...queueItems];
+    nextQueueItems.splice(removeIndex, 1);
+    await saveQueueItems(nextQueueItems);
+
+    if (queueRuntime.activeQueueItemId !== queueItemId) {
+      return createSuccess({
+        queueItems: nextQueueItems,
+        queueRuntime,
+        removedCount: 1
+      });
+    }
+
+    if (Number.isInteger(queueRuntime.activeTabId)) {
+      await queueEngine.closeTabIfPresent(queueRuntime.activeTabId);
+    }
+
+    const nextRuntime = {
+      ...clearQueueRuntimeActive(queueRuntime),
+      updatedAt: Date.now()
+    };
+    await saveQueueRuntime(nextRuntime);
+
+    return createSuccess({
+      queueItems: nextQueueItems,
+      queueRuntime: nextRuntime,
+      removedCount: 1
+    });
+  }
+
   async function startQueue(queueRuntimeContext = undefined) {
     const queueRuntime = await getQueueRuntime();
     if (queueRuntime.status === "running") {
@@ -246,6 +292,7 @@ export function createQueueLifecycleHandlers({
   return {
     clearQueue,
     clearArchivedQueue,
+    removeQueueItem,
     pauseQueue,
     resumeQueue,
     reverseQueue,
@@ -263,4 +310,21 @@ function normalizeQueueRuntimeContextWindowId(queueRuntimeContext) {
   return Number.isInteger(queueRuntimeContext.controllerWindowId)
     ? queueRuntimeContext.controllerWindowId
     : null;
+}
+
+function normalizeQueueItemId(queueItem) {
+  if (!queueItem || typeof queueItem !== "object") {
+    return null;
+  }
+
+  if (typeof queueItem.id !== "string") {
+    return null;
+  }
+
+  const normalizedId = queueItem.id.trim();
+  if (normalizedId.length === 0) {
+    return null;
+  }
+
+  return normalizedId;
 }

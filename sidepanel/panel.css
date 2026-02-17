@@ -524,6 +524,11 @@ body {
   opacity: 0.6;
 }
 
+.queue-item-remove-button[disabled] {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .queue-runtime-status {
   color: #555;
   font-size: 0.78rem;
@@ -571,6 +576,16 @@ body {
 
 .queue-link:hover {
   text-decoration: underline;
+}
+
+.queue-item-remove-button {
+  border: 1px solid #b42318;
+  border-radius: 6px;
+  background: #fff;
+  color: #b42318;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 3px 7px;
 }
 
 .queue-status {

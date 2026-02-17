@@ -101,7 +101,6 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
 
   queueTitleEl.textContent = `Queue (${safeQueueItems.length})`;
   queueSummaryEl.textContent = summarizeQueueCounts(safeQueueItems);
-  updateQueueActionState();
 
   queueListEl.textContent = "";
   if (safeQueueItems.length === 0) {
@@ -109,6 +108,7 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
     emptyItem.className = "queue-empty";
     emptyItem.textContent = "Queue is empty.";
     queueListEl.append(emptyItem);
+    updateQueueActionState();
     return;
   }
 
@@ -135,6 +135,13 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
     statusBadge.className = `queue-status queue-status-${queueItem.status}`;
     statusBadge.textContent = formatQueueStatusLabel(queueItem.status);
 
+    const removeButton = document.createElement("button");
+    removeButton.className = "queue-item-remove-button";
+    removeButton.type = "button";
+    removeButton.dataset.queueItemId = queueItem.id;
+    removeButton.textContent = "Remove";
+    removeButton.setAttribute("aria-label", `Remove ${queueItem.title} from queue`);
+
     const meta = document.createElement("div");
     meta.className = "queue-item-meta";
     const attemptsEl = document.createElement("div");
@@ -148,12 +155,13 @@ export function renderQueue({ queueItems, queueTitleEl, queueSummaryEl, queueLis
       meta.append(errorEl);
     }
 
-    row.append(link, statusBadge);
+    row.append(link, removeButton, statusBadge);
     item.append(row, meta);
     queueListEl.append(item);
   }
 
   scrollQueueListToActiveItem(queueListEl, activeQueueItemEl);
+  updateQueueActionState();
 }
 
 export function renderIntegrationState({

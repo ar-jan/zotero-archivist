@@ -18,7 +18,8 @@ const ARRAY_PAYLOAD_CONTRACTS = Object.freeze({
 });
 
 const OBJECT_PAYLOAD_CONTRACTS = Object.freeze({
-  [MESSAGE_TYPES.SET_QUEUE_SETTINGS]: "queueSettings"
+  [MESSAGE_TYPES.SET_QUEUE_SETTINGS]: "queueSettings",
+  [MESSAGE_TYPES.REMOVE_QUEUE_ITEM]: "queueItem"
 });
 
 const OPTIONAL_OBJECT_PAYLOAD_CONTRACTS = Object.freeze({

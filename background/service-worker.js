@@ -67,6 +67,8 @@ const messageHandlers = {
     setQueueSettings(message.payload?.queueSettings),
   [MESSAGE_TYPES.CLEAR_QUEUE]: async () => queueLifecycleHandlers.clearQueue(),
   [MESSAGE_TYPES.CLEAR_ARCHIVED_QUEUE]: async () => queueLifecycleHandlers.clearArchivedQueue(),
+  [MESSAGE_TYPES.REMOVE_QUEUE_ITEM]: async (message) =>
+    queueLifecycleHandlers.removeQueueItem(message.payload?.queueItem),
   [MESSAGE_TYPES.START_QUEUE]: async (message) =>
     queueLifecycleHandlers.startQueue(message.payload?.queueRuntimeContext),
   [MESSAGE_TYPES.PAUSE_QUEUE]: async () => queueLifecycleHandlers.pauseQueue(),

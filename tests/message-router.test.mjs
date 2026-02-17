@@ -104,6 +104,38 @@ test("message router treats clear archived queue as payloadless", async () => {
   assert.equal(validResponse.ok, true);
 });
 
+test("message router validates remove queue item payload contract", async () => {
+  const invalidResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.REMOVE_QUEUE_ITEM,
+      payload: {}
+    },
+    {
+      [MESSAGE_TYPES.REMOVE_QUEUE_ITEM]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(invalidResponse.ok, false);
+  assert.equal(invalidResponse.error.code, "BAD_REQUEST");
+  assert.match(invalidResponse.error.message, /payload\.queueItem/i);
+
+  const validResponse = await routeMessage(
+    {
+      type: MESSAGE_TYPES.REMOVE_QUEUE_ITEM,
+      payload: {
+        queueItem: {
+          id: "q1"
+        }
+      }
+    },
+    {
+      [MESSAGE_TYPES.REMOVE_QUEUE_ITEM]: async () => ({ ok: true })
+    }
+  );
+
+  assert.equal(validResponse.ok, true);
+});
+
 test("message router allows optional queue runtime context payload for start and resume", async () => {
   const noPayloadStartResponse = await routeMessage(
     {

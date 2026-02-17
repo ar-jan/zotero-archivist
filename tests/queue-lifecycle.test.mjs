@@ -233,6 +233,83 @@ test("clearArchivedQueue rejects when running or when queue has no archived item
   assert.equal(noneResponse.error.code, "BAD_REQUEST");
 });
 
+test("removeQueueItem removes a non-active queue item when queue is not running", async () => {
+  const harness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "idle" }),
+    queueItems: [
+      createQueueItem({ id: "q1", status: "pending" }),
+      createQueueItem({ id: "q2", status: "failed", lastError: "save failed" })
+    ]
+  });
+
+  const response = await harness.handlers.removeQueueItem({
+    id: "q2"
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.removedCount, 1);
+  assert.deepEqual(response.queueItems.map((item) => item.id), ["q1"]);
+  assert.deepEqual(harness.state.queueItems.map((item) => item.id), ["q1"]);
+  assert.equal(response.queueRuntime.status, "idle");
+  assert.deepEqual(harness.calls.closeTabIfPresent, []);
+});
+
+test("removeQueueItem clears active runtime state when removing paused active item", async () => {
+  const harness = createHarness({
+    queueRuntime: createQueueRuntime({
+      status: "paused",
+      activeQueueItemId: "q2",
+      activeTabId: 77
+    }),
+    queueItems: [
+      createQueueItem({ id: "q1", status: "pending" }),
+      createQueueItem({ id: "q2", status: "saving_snapshot", attempts: 1 })
+    ]
+  });
+
+  const response = await harness.handlers.removeQueueItem({
+    id: "q2"
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.queueRuntime.status, "paused");
+  assert.equal(response.queueRuntime.activeQueueItemId, null);
+  assert.equal(response.queueRuntime.activeTabId, null);
+  assert.deepEqual(harness.calls.closeTabIfPresent, [77]);
+});
+
+test("removeQueueItem rejects running queue, missing ids, and unknown items", async () => {
+  const runningHarness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "running" }),
+    queueItems: [createQueueItem({ id: "q1", status: "pending" })]
+  });
+  const runningResponse = await runningHarness.handlers.removeQueueItem({
+    id: "q1"
+  });
+  assert.equal(runningResponse.ok, false);
+  assert.equal(runningResponse.error.code, "BAD_REQUEST");
+
+  const invalidPayloadHarness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "idle" }),
+    queueItems: [createQueueItem({ id: "q1", status: "pending" })]
+  });
+  const invalidPayloadResponse = await invalidPayloadHarness.handlers.removeQueueItem({
+    id: "   "
+  });
+  assert.equal(invalidPayloadResponse.ok, false);
+  assert.equal(invalidPayloadResponse.error.code, "BAD_REQUEST");
+
+  const unknownItemHarness = createHarness({
+    queueRuntime: createQueueRuntime({ status: "idle" }),
+    queueItems: [createQueueItem({ id: "q1", status: "pending" })]
+  });
+  const unknownItemResponse = await unknownItemHarness.handlers.removeQueueItem({
+    id: "q-missing"
+  });
+  assert.equal(unknownItemResponse.ok, false);
+  assert.equal(unknownItemResponse.error.code, "QUEUE_ITEM_NOT_FOUND");
+});
+
 test("reverseQueue reverses queue item order when queue is not running", async () => {
   const harness = createHarness({
     queueRuntime: createQueueRuntime({
