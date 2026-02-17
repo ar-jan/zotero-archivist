@@ -8,147 +8,151 @@
   </head>
   <body>
     <main class="panel">
-      <header class="panel-header">
-        <h1>Zotero Archivist</h1>
-        <p id="rules-summary" class="rules-summary"></p>
+      <!-- 1. Unified Header -->
+      <header class="app-header">
+        <div class="header-main">
+          <h1>Zotero Archivist</h1>
+          <button id="collect-links-button" type="button" class="primary-action-button">Collect Links</button>
+        </div>
+        <p id="status" class="status-line" role="status"></p>
       </header>
 
-      <section class="selectors" aria-live="polite">
-        <h2 class="section-heading">
-          <button
-            id="selectors-toggle-button"
-            class="section-toggle"
-            type="button"
-            aria-expanded="true"
-            aria-controls="selectors-body"
-          >
-            <span>Selector Rules</span>
-          </button>
-        </h2>
-        <div id="selectors-body" class="section-body">
-          <ul id="selector-rules-list" class="selector-rules-list"></ul>
-          <div class="selector-actions">
-            <button id="add-rule-button" type="button">Add Rule</button>
-            <button id="save-rules-button" type="button">Save Rules</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="controls">
-        <button id="collect-links-button" type="button">Collect Links</button>
-        <p id="status" class="status" role="status"></p>
-      </section>
-
-      <section class="results" aria-live="polite">
-        <div class="results-header">
+      <!-- 2. Compact Selectors -->
+      <section class="section selectors" aria-live="polite">
+        <div class="section-header">
           <h2 class="section-heading">
             <button
-              id="results-toggle-button"
+              id="selectors-toggle-button"
               class="section-toggle"
               type="button"
-              aria-expanded="true"
-              aria-controls="results-body"
+              aria-expanded="false"
+              aria-controls="selectors-body"
             >
-              <span id="results-title">Collected Links (0)</span>
+              <span>Selector Rules</span>
             </button>
           </h2>
-          <p id="results-summary" class="results-summary"></p>
+          <div class="section-actions">
+            <button id="add-rule-button" type="button" class="icon-button" aria-label="Add Rule" title="Add Rule">+</button>
+            <button id="save-rules-button" type="button" class="icon-button" aria-label="Save Rules" title="Save Rules">💾</button>
+          </div>
         </div>
-        <div id="results-body" class="section-body">
-          <div class="results-controls">
-            <div class="results-selection-actions">
-              <button id="select-all-links-button" type="button">Select All</button>
-              <button id="deselect-all-links-button" type="button">Deselect All</button>
-              <button id="invert-links-button" type="button">Invert</button>
-              <button id="clear-all-links-button" type="button">Clear All</button>
-            </div>
-            <label class="results-filter" for="results-filter-input">
-              <span>Filter</span>
-              <input
+        <div id="selectors-body" class="section-body" hidden>
+          <ul id="selector-rules-list" class="selector-rules-list"></ul>
+          <p id="rules-summary" class="rules-summary-text"></p>
+        </div>
+      </section>
+
+      <!-- 3. Workspace: Results & Queue (Combined Visual Flow) -->
+      <div class="workspace">
+        
+        <!-- Results Section -->
+        <section class="section results" aria-live="polite">
+          <div class="section-header">
+            <h2 class="section-heading">
+              <button
+                id="results-toggle-button"
+                class="section-toggle"
+                type="button"
+                aria-expanded="true"
+                aria-controls="results-body"
+              >
+                <span id="results-title">Collected Links</span>
+              </button>
+            </h2>
+            <p id="results-summary" class="section-meta"></p>
+          </div>
+          
+          <div id="results-body" class="section-body">
+            <div class="filter-bar">
+               <input
                 id="results-filter-input"
                 type="search"
-                placeholder="Filter by title or URL"
+                class="filter-input"
+                placeholder="Filter links..."
                 autocomplete="off"
               >
-            </label>
+              <div class="bulk-actions">
+                <button id="select-all-links-button" type="button" class="text-button" title="Select All">All</button>
+                <button id="deselect-all-links-button" type="button" class="text-button" title="Deselect All">None</button>
+                <button id="invert-links-button" type="button" class="text-button" title="Invert Selection">Inv</button>
+                <button id="clear-all-links-button" type="button" class="text-button danger" title="Clear All">Clear</button>
+              </div>
+            </div>
+            <ul id="results-list" class="results-list"></ul>
           </div>
-          <ul id="results-list" class="results-list"></ul>
-        </div>
-      </section>
+        </section>
 
-      <section class="queue" aria-live="polite">
-        <div class="queue-header">
-          <h2 id="queue-title">Queue (0)</h2>
-          <p id="queue-summary" class="queue-summary"></p>
-        </div>
-        <div class="queue-controls">
-          <button id="add-selected-to-queue-button" type="button">Add Selected to Queue</button>
-          <button id="clear-queue-button" type="button">Clear Queue</button>
-          <button id="clear-archived-queue-button" type="button">Clear Archived</button>
-          <button id="reverse-queue-button" type="button">Reverse Queue</button>
-        </div>
-        <div class="queue-controls">
-          <button id="start-queue-button" type="button">Start</button>
-          <button id="pause-queue-button" type="button">Pause</button>
-          <button id="resume-queue-button" type="button">Resume</button>
-          <button id="stop-queue-button" type="button">Stop</button>
-          <button id="retry-failed-queue-button" type="button">Retry Failed</button>
-        </div>
-        <div class="queue-settings">
-          <label class="queue-setting-field" for="queue-delay-seconds-input">
-            <span>Delay (seconds)</span>
-            <input
-              id="queue-delay-seconds-input"
-              type="number"
-              min="0"
-              step="0.1"
-              inputmode="decimal"
-            >
-          </label>
-          <label class="queue-setting-field" for="queue-jitter-seconds-input">
-            <span>Jitter +/- (seconds)</span>
-            <input
-              id="queue-jitter-seconds-input"
-              type="number"
-              min="0"
-              step="0.1"
-              inputmode="decimal"
-            >
-          </label>
-          <button id="save-queue-settings-button" type="button">Save Queue Settings</button>
-        </div>
-        <p id="queue-runtime-status" class="queue-runtime-status"></p>
-        <ul id="queue-list" class="queue-list"></ul>
-      </section>
+        <!-- Queue Section -->
+        <section class="section queue" aria-live="polite">
+          <div class="section-header">
+             <h2 class="section-heading" id="queue-title">Queue</h2>
+             <div class="queue-global-controls">
+                <button id="start-queue-button" type="button" class="action-button small">Start</button>
+                <button id="pause-queue-button" type="button" class="action-button small">Pause</button>
+                <button id="stop-queue-button" type="button" class="action-button small">Stop</button>
+             </div>
+          </div>
+          
+          <div id="queue-body" class="section-body">
+            <div class="queue-toolbar">
+               <button id="add-selected-to-queue-button" type="button" class="secondary-button full-width">Add Selected to Queue</button>
+            </div>
+             <div class="queue-toolbar-secondary">
+               <button id="clear-queue-button" type="button" class="text-button danger">Clear Queue</button>
+               <button id="clear-archived-queue-button" type="button" class="text-button">Clear Archived</button>
+               <button id="retry-failed-queue-button" type="button" class="text-button">Retry Failed</button>
+             </div>
 
-      <section class="integration" aria-live="polite">
-        <div class="integration-header">
-          <h2>Integration</h2>
-          <p id="integration-mode" class="integration-mode"></p>
+             <div class="queue-settings-row">
+               <label title="Delay in seconds">
+                 <span>Delay</span>
+                 <input id="queue-delay-seconds-input" type="number" min="0" step="0.1" class="mini-input">
+               </label>
+               <label title="Jitter in seconds">
+                 <span>+/-</span>
+                 <input id="queue-jitter-seconds-input" type="number" min="0" step="0.1" class="mini-input">
+               </label>
+                <button id="save-queue-settings-button" type="button" class="text-button">Save</button>
+             </div>
+             
+            <p id="queue-runtime-status" class="queue-runtime-status"></p>
+            <ul id="queue-list" class="queue-list"></ul>
+          </div>
+        </section>
+      </div>
+
+      <!-- 4. Sticky Footer: Integration -->
+      <footer class="app-footer integration" aria-live="polite">
+        <div class="footer-status-line">
+           <span id="integration-mode" class="integration-mode-badge"></span>
+           <span class="spacer"></span>
+           <button id="refresh-diagnostics-button" type="button" class="icon-button small" title="Refresh Status">↻</button>
         </div>
-        <div class="integration-controls">
-          <button id="refresh-diagnostics-button" type="button">Refresh Status</button>
+        
+        <div class="integration-metrics">
+          <div id="integration-connector-row" class="status-dot-container" data-state="unknown" title="Zotero Connector">
+             <span class="status-dot"></span> <span class="status-label">Ext</span>
+          </div>
+          <div id="integration-bridge-row" class="status-dot-container" data-state="unknown" title="Bridge">
+             <span class="status-dot"></span> <span class="status-label">Bridge</span>
+          </div>
+          <div id="integration-zotero-row" class="status-dot-container" data-state="unknown" title="Zotero App">
+             <span class="status-dot"></span> <span class="status-label">App</span>
+          </div>
         </div>
-        <p id="integration-updated-at" class="integration-updated-at"></p>
-        <ul class="integration-status-list" aria-label="Integration status">
-          <li id="integration-connector-row" class="integration-status-row" data-state="unknown">
-            <span class="integration-status-indicator" aria-hidden="true"></span>
-            <span class="integration-status-label">Zotero Connector extension</span>
-            <span id="integration-connector-status" class="integration-status-value">unknown</span>
-          </li>
-          <li id="integration-bridge-row" class="integration-status-row" data-state="unknown">
-            <span class="integration-status-indicator" aria-hidden="true"></span>
-            <span class="integration-status-label">Connector bridge</span>
-            <span id="integration-bridge-status" class="integration-status-value">unknown</span>
-          </li>
-          <li id="integration-zotero-row" class="integration-status-row" data-state="unknown">
-            <span class="integration-status-indicator" aria-hidden="true"></span>
-            <span class="integration-status-label">Zotero app</span>
-            <span id="integration-zotero-status" class="integration-status-value">unknown</span>
-          </li>
-        </ul>
-        <p id="integration-error" class="integration-error" hidden></p>
-      </section>
+        <p id="integration-error" class="integration-error-toast" hidden></p>
+        <!-- Retain original IDs for logic, but hidden/repurposed if needed -->
+        <span id="integration-updated-at" hidden></span>
+        <span id="integration-connector-status" hidden></span>
+        <span id="integration-bridge-status" hidden></span>
+        <span id="integration-zotero-status" hidden></span>
+        
+        <!-- Missing ID needed for render.js? render.js expects these IDs to exist. -->
+        <!-- Logic uses: integration-connector-row (dataset.state), integration-connector-status (textContent) -->
+        <!-- I've kept the rows, but hidden the text spans if I want a dot-only look, 
+             OR I can keep the functionality by letting render.js update the hidden spans 
+             and using CSS to control visibility. -->
+      </footer>
     </main>
 
     <script type="module" src="panel.js"></script>
