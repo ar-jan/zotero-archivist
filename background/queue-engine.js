@@ -32,7 +32,7 @@ export function createQueueEngine({
       .catch(() => undefined)
       .then(() => task())
       .catch((error) => {
-        console.error("[zotero-archivist] Queue engine task failed.", { trigger, error });
+        console.error("[webpage-archivist] Queue engine task failed.", { trigger, error });
       });
     return queueEngineRun;
   }
@@ -343,7 +343,7 @@ export function createQueueEngine({
         delayInMinutes: QUEUE_ALARM_DELAY_MINUTES
       });
     } catch (error) {
-      console.error("[zotero-archivist] Failed to schedule queue alarm.", error);
+      console.error("[webpage-archivist] Failed to schedule queue alarm.", error);
     }
   }
 
@@ -351,7 +351,7 @@ export function createQueueEngine({
     try {
       await chrome.alarms.clear(QUEUE_ENGINE_ALARM_NAME);
     } catch (error) {
-      console.error("[zotero-archivist] Failed to clear queue alarm.", error);
+      console.error("[webpage-archivist] Failed to clear queue alarm.", error);
     }
   }
 
@@ -464,7 +464,7 @@ export function createQueueEngine({
     try {
       return await getQueueSettings();
     } catch (error) {
-      console.error("[zotero-archivist] Failed to read queue settings.", error);
+      console.error("[webpage-archivist] Failed to read queue settings.", error);
       return { ...DEFAULT_QUEUE_SETTINGS };
     }
   }

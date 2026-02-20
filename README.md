@@ -1,4 +1,4 @@
-# zotero-archivist
+# webpage-archivist
 
 A Chromium browser extension to collect links from a web page and archive selected pages to Zotero via the Zotero Connector browser plugin.
 
@@ -11,7 +11,7 @@ A Chromium browser extension to collect links from a web page and archive select
 
 - Git clone this repository (or download and unpack the ZIP version)
 - Enable `Developer mode` on your browser's extension page
-- Click `Load unpacked` and point it at your copy of `zotero-archivist`
+- Click `Load unpacked` and point it at your copy of `webpage-archivist`
 
 ## Usage
 

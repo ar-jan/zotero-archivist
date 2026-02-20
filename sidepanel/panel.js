@@ -327,7 +327,7 @@ async function collectLinks() {
     setCollectedLinksState(response.links);
     setStatus(`Collected ${panelState.collectedLinks.length} link(s).`);
   } catch (error) {
-    console.error("[zotero-archivist] Collect Links failed.", error);
+    console.error("[webpage-archivist] Collect Links failed.", error);
     setStatus("Collect Links failed.");
   } finally {
     collectButton.disabled = false;
@@ -661,7 +661,7 @@ async function saveQueueSettings() {
       `Queue delay set to ${formatSecondsLabel(savedQueueSettings.interItemDelayMs)} +/- ${formatSecondsLabel(savedQueueSettings.interItemDelayJitterMs)}.`
     );
   } catch (error) {
-    console.error("[zotero-archivist] Failed to save queue settings.", error);
+    console.error("[webpage-archivist] Failed to save queue settings.", error);
     setStatus("Failed to save queue settings.");
   } finally {
     setQueueSettingsSaveInProgress(false);
@@ -737,7 +737,7 @@ async function refreshIntegrationDiagnostics() {
     setProviderDiagnosticsState(response.providerDiagnostics);
     setStatus("Integration diagnostics refreshed.");
   } catch (error) {
-    console.error("[zotero-archivist] Failed to refresh integration diagnostics.", error);
+    console.error("[webpage-archivist] Failed to refresh integration diagnostics.", error);
     setStatus("Failed to refresh integration diagnostics.");
   } finally {
     panelStore.setIntegrationInProgress(false);

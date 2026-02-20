@@ -118,7 +118,7 @@ export function createQueueController({
 
       setStatus(config.successStatusMessage);
     } catch (error) {
-      logger.error("[zotero-archivist] Queue lifecycle action failed.", {
+      logger.error("[webpage-archivist] Queue lifecycle action failed.", {
         messageType,
         error
       });
@@ -216,7 +216,7 @@ export function createQueueController({
 
       setStatus(`Added ${addedCount} link(s) to queue.`);
     } catch (error) {
-      logger.error("[zotero-archivist] Failed to add selected links to queue.", error);
+      logger.error("[webpage-archivist] Failed to add selected links to queue.", error);
       setStatus("Failed to add selected links to queue.");
     } finally {
       panelStore.setQueueAuthoringInProgress(false);
@@ -247,7 +247,7 @@ export function createQueueController({
       }
       setStatus("Cleared queue.");
     } catch (error) {
-      logger.error("[zotero-archivist] Failed to clear queue.", error);
+      logger.error("[webpage-archivist] Failed to clear queue.", error);
       setStatus("Failed to clear queue.");
     } finally {
       panelStore.setQueueClearingInProgress(false);
@@ -284,7 +284,7 @@ export function createQueueController({
       }
       setStatus("Removed queue item.");
     } catch (error) {
-      logger.error("[zotero-archivist] Failed to remove queue item.", error);
+      logger.error("[webpage-archivist] Failed to remove queue item.", error);
       setStatus("Failed to remove queue item.");
     } finally {
       panelStore.setQueueClearingInProgress(false);
@@ -323,7 +323,7 @@ export function createQueueController({
         : archivedCount;
       setStatus(`Cleared ${clearedCount} archived item(s).`);
     } catch (error) {
-      logger.error("[zotero-archivist] Failed to clear archived queue items.", error);
+      logger.error("[webpage-archivist] Failed to clear archived queue items.", error);
       setStatus("Failed to clear archived queue items.");
     } finally {
       panelStore.setQueueClearingInProgress(false);

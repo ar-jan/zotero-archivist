@@ -92,7 +92,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   handleMessage(message)
     .then((result) => sendResponse(result))
     .catch((error) => {
-      console.error("[zotero-archivist] Unhandled runtime error", error);
+      console.error("[webpage-archivist] Unhandled runtime error", error);
       sendResponse(createError(ERROR_CODES.INTERNAL_ERROR, "Unexpected runtime error."));
     });
 
@@ -139,7 +139,7 @@ async function configureSidePanelBehavior() {
       openPanelOnActionClick: true
     });
   } catch (error) {
-    console.error("[zotero-archivist] Failed to configure side panel behavior.", error);
+    console.error("[webpage-archivist] Failed to configure side panel behavior.", error);
   }
 }
 

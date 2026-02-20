@@ -103,7 +103,7 @@ export function createLinkCurationController({
         setCollectedLinksState(response.links);
         return true;
       } catch (error) {
-        logger.error("[zotero-archivist] Failed to persist curated links.", error);
+        logger.error("[webpage-archivist] Failed to persist curated links.", error);
         setStatus("Failed to save curated links.");
         return false;
       }

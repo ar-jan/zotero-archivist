@@ -1,5 +1,5 @@
 {
-  "name": "zotero-archivist",
+  "name": "webpage-archivist",
   "private": true,
   "scripts": {
     "test": "node --test tests/*.mjs",

@@ -42,7 +42,7 @@ export function createSelectorController({
       setSelectorRulesDirty(false);
       setStatus(`Saved ${persistedRules.length} selector rule(s).`);
     } catch (error) {
-      logger.error("[zotero-archivist] Failed to save selector rules.", error);
+      logger.error("[webpage-archivist] Failed to save selector rules.", error);
       setStatus("Failed to save selector rules.");
     } finally {
       saveRulesButton.disabled = false;
