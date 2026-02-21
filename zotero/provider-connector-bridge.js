@@ -132,7 +132,10 @@ export function createConnectorBridgeProvider() {
         return createProviderSaveError(CONNECTOR_OFFLINE_SAVE_MESSAGE);
       }
 
-      const saveAsWebpageOptions = resolveSaveAsWebpageOptions(input?.zoteroSaveMode);
+      const saveAsWebpageOptions = await resolveSaveAsWebpageOptions({
+        tabId: input.tabId,
+        zoteroSaveMode: input?.zoteroSaveMode
+      });
       const saveResult = await runBridgeCommand({
         tabId: input.tabId,
         timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
@@ -332,16 +335,30 @@ function isConnectorUnavailableError(errorMessage) {
   return false;
 }
 
-function resolveSaveAsWebpageOptions(zoteroSaveMode) {
+async function resolveSaveAsWebpageOptions({ tabId, zoteroSaveMode }) {
   if (zoteroSaveMode === QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA) {
+    const snapshotPreference = await resolveConnectorAutomaticSnapshotPreference(tabId);
     return {
-      snapshot: false
+      snapshot: snapshotPreference
     };
   }
 
   return {
     snapshot: true
   };
+}
+
+async function resolveConnectorAutomaticSnapshotPreference(tabId) {
+  const preferenceResult = await runBridgeCommand({
+    tabId,
+    timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
+    command: ["Connector.getPref", ["automaticSnapshots"]]
+  });
+  if (!preferenceResult.ok) {
+    return true;
+  }
+
+  return preferenceResult.result !== false;
 }
 
 async function runBridgeCommand({ tabId, timeoutMs, command }) {

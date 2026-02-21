@@ -114,7 +114,7 @@ test("connector bridge saveWebPageWithSnapshot runs injection, online check, the
   ]);
 });
 
-test("connector bridge saveWebPageWithSnapshot supports Embedded Metadata mode", async (t) => {
+test("connector bridge saveWebPageWithSnapshot supports Embedded Metadata mode and honors snapshot pref", async (t) => {
   let observedSaveCommandArgs = null;
   const chromeMock = installBridgeChromeMock({
     executeScriptResponder: async ({ commandName, commandArgs }) => {
@@ -123,6 +123,9 @@ test("connector bridge saveWebPageWithSnapshot supports Embedded Metadata mode",
       }
       if (commandName === "Connector.checkIsOnline") {
         return { ok: true, result: true };
+      }
+      if (commandName === "Connector.getPref") {
+        return { ok: true, result: false };
       }
       if (commandName === "Messaging.sendMessage") {
         observedSaveCommandArgs = commandArgs;
@@ -177,6 +180,46 @@ test("connector bridge saveWebPageWithSnapshot fails when connector reports offl
 
   assert.equal(result.ok, false);
   assert.match(result.error, /offline for bridge save/i);
+});
+
+test("connector bridge embedded mode defaults to snapshot when pref lookup fails", async (t) => {
+  let observedSaveCommandArgs = null;
+  const chromeMock = installBridgeChromeMock({
+    executeScriptResponder: async ({ commandName, commandArgs }) => {
+      if (commandName === "Connector_Browser.injectTranslationScripts") {
+        return { ok: true, result: true };
+      }
+      if (commandName === "Connector.checkIsOnline") {
+        return { ok: true, result: true };
+      }
+      if (commandName === "Connector.getPref") {
+        return { ok: false, error: "pref lookup failed" };
+      }
+      if (commandName === "Messaging.sendMessage") {
+        observedSaveCommandArgs = commandArgs;
+        return { ok: true, result: { ok: true } };
+      }
+      return { ok: false, error: "Unexpected command." };
+    },
+    tabsById: new Map([
+      [41, { id: 41, url: "https://example.com/default", title: "Default Case" }]
+    ])
+  });
+  t.after(() => chromeMock.restore());
+
+  const provider = createConnectorBridgeProvider();
+  const result = await provider.saveWebPageWithSnapshot({
+    tabId: 41,
+    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(observedSaveCommandArgs, [
+    "saveAsWebpage",
+    ["Default Case", { snapshot: true }],
+    41,
+    0
+  ]);
 });
 
 test("connector bridge saveWebPageWithSnapshot fails when preparation step fails", async (t) => {
