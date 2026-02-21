@@ -10,8 +10,10 @@ const CONNECTOR_BRIDGE_IFRAME_PATH = "chromeMessageIframe/messageIframe.html";
 const BRIDGE_HEALTH_TIMEOUT_MS = 4000;
 const BRIDGE_SAVE_TIMEOUT_MS = 120000;
 const BRIDGE_DEFAULT_FRAME_TIMEOUT_MS = 8000;
-const EMBEDDED_METADATA_TRANSLATOR_WAIT_TIMEOUT_MS = 12000;
+const EMBEDDED_METADATA_TRANSLATOR_WAIT_TIMEOUT_MS = 30000;
 const EMBEDDED_METADATA_TRANSLATOR_POLL_INTERVAL_MS = 250;
+const EMBEDDED_METADATA_TRANSLATOR_REFRESH_INTERVAL_MS = 1000;
+const EMBEDDED_METADATA_TRANSLATOR_REINJECT_INTERVAL_MS = 3000;
 const CONNECTOR_OFFLINE_SAVE_MESSAGE =
   "Zotero Connector reports the local Zotero client as offline for bridge save.";
 const CONNECTOR_HEALTHY_MESSAGE =
@@ -346,6 +348,7 @@ function isEmbeddedMetadataMode(zoteroSaveMode) {
 async function saveWithEmbeddedMetadataTranslator({ tabId, tabPayload }) {
   const translatorInfoResult = await waitForTabTranslators({
     tabId,
+    tabPayload,
     timeoutMs: EMBEDDED_METADATA_TRANSLATOR_WAIT_TIMEOUT_MS
   });
   if (!translatorInfoResult.ok) {
@@ -397,11 +400,15 @@ function findEmbeddedMetadataTranslatorIndex(translators) {
   });
 }
 
-async function waitForTabTranslators({ tabId, timeoutMs }) {
+async function waitForTabTranslators({ tabId, tabPayload, timeoutMs }) {
   const normalizedTimeoutMs = Math.max(1000, Math.trunc(timeoutMs));
   const deadline = Date.now() + normalizedTimeoutMs;
   let lastReadError = null;
-  let refreshRequested = false;
+  let nextRefreshAt = Date.now();
+  let nextReinjectAt = Date.now();
+  let sawMissingTranslatorState = false;
+  let refreshAttemptCount = 0;
+  let reinjectionAttemptCount = 0;
 
   while (Date.now() < deadline) {
     const tabInfoResult = await runBridgeCommand({
@@ -417,16 +424,32 @@ async function waitForTabTranslators({ tabId, timeoutMs }) {
           translators: tabInfoResult.result.translators
         };
       }
-
-      if (!refreshRequested) {
-        refreshRequested = true;
-        const refreshResult = await triggerEmbeddedTranslatorRefresh(tabId);
-        if (!refreshResult.ok) {
-          lastReadError = refreshResult.error;
-        }
-      }
+      sawMissingTranslatorState = true;
     } else {
       lastReadError = tabInfoResult.error;
+    }
+
+    const now = Date.now();
+    if (now >= nextReinjectAt && tabPayload && Number.isInteger(tabPayload.id)) {
+      nextReinjectAt = now + EMBEDDED_METADATA_TRANSLATOR_REINJECT_INTERVAL_MS;
+      reinjectionAttemptCount += 1;
+      const reinjectionResult = await runBridgeCommand({
+        tabId,
+        timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
+        command: ["Connector_Browser.injectTranslationScripts", [tabPayload, 0]]
+      });
+      if (!reinjectionResult.ok) {
+        lastReadError = reinjectionResult.error;
+      }
+    }
+
+    if (now >= nextRefreshAt) {
+      nextRefreshAt = now + EMBEDDED_METADATA_TRANSLATOR_REFRESH_INTERVAL_MS;
+      refreshAttemptCount += 1;
+      const refreshResult = await triggerEmbeddedTranslatorRefresh(tabId);
+      if (!refreshResult.ok) {
+        lastReadError = refreshResult.error;
+      }
     }
 
     await delay(EMBEDDED_METADATA_TRANSLATOR_POLL_INTERVAL_MS);
@@ -437,7 +460,9 @@ async function waitForTabTranslators({ tabId, timeoutMs }) {
     error:
       typeof lastReadError === "string" && lastReadError.length > 0
         ? `Timed out while waiting for Embedded Metadata translator: ${lastReadError}`
-        : "Timed out while waiting for Embedded Metadata translator."
+        : sawMissingTranslatorState
+          ? `Timed out while waiting for Embedded Metadata translator. Connector did not publish translator candidates for this tab (refresh attempts: ${refreshAttemptCount}, reinjection attempts: ${reinjectionAttemptCount}).`
+          : "Timed out while waiting for Embedded Metadata translator."
   };
 }
 
