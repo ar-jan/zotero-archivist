@@ -265,6 +265,7 @@ test(
   async (t) => {
     let refreshObserved = false;
     let observedRefreshCommandArgs = null;
+    let observedPingCommandArgs = null;
     let getTabInfoCalls = 0;
 
     const chromeMock = installBridgeChromeMock({
@@ -285,9 +286,16 @@ test(
           };
         }
         if (commandName === "Messaging.sendMessage") {
-          observedRefreshCommandArgs = commandArgs;
-          refreshObserved = true;
-          return { ok: true, result: true };
+          if (commandArgs?.[0] === "pageModified") {
+            observedRefreshCommandArgs = commandArgs;
+            refreshObserved = true;
+            return { ok: true, result: true };
+          }
+          if (commandArgs?.[0] === "ping") {
+            observedPingCommandArgs = commandArgs;
+            return { ok: true, result: "pong" };
+          }
+          return { ok: false, error: `Unexpected messaging command: ${String(commandArgs?.[0])}` };
         }
         if (commandName === "Connector_Browser.saveWithTranslator") {
           return { ok: true, result: [{ itemType: "webpage", title: "Refreshed Article" }] };
@@ -309,7 +317,8 @@ test(
     assert.equal(result.ok, true);
     assert.equal(refreshObserved, true);
     assert.ok(getTabInfoCalls >= 2);
-    assert.deepEqual(observedRefreshCommandArgs, ["pageModified", null, 44, 0]);
+    assert.deepEqual(observedRefreshCommandArgs, ["pageModified", null, 44, null]);
+    assert.deepEqual(observedPingCommandArgs, ["ping", null, 44, 0]);
   }
 );
 

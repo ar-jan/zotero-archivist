@@ -14,6 +14,7 @@ const EMBEDDED_METADATA_TRANSLATOR_WAIT_TIMEOUT_MS = 30000;
 const EMBEDDED_METADATA_TRANSLATOR_POLL_INTERVAL_MS = 250;
 const EMBEDDED_METADATA_TRANSLATOR_REFRESH_INTERVAL_MS = 1000;
 const EMBEDDED_METADATA_TRANSLATOR_REINJECT_INTERVAL_MS = 3000;
+const EMBEDDED_METADATA_TRANSLATOR_PING_INTERVAL_MS = 1000;
 const CONNECTOR_OFFLINE_SAVE_MESSAGE =
   "Zotero Connector reports the local Zotero client as offline for bridge save.";
 const CONNECTOR_HEALTHY_MESSAGE =
@@ -406,9 +407,12 @@ async function waitForTabTranslators({ tabId, tabPayload, timeoutMs }) {
   let lastReadError = null;
   let nextRefreshAt = Date.now();
   let nextReinjectAt = Date.now();
+  let nextPingAt = Date.now();
   let sawMissingTranslatorState = false;
   let refreshAttemptCount = 0;
   let reinjectionAttemptCount = 0;
+  let pingAttemptCount = 0;
+  let pingResponded = false;
 
   while (Date.now() < deadline) {
     const tabInfoResult = await runBridgeCommand({
@@ -452,6 +456,17 @@ async function waitForTabTranslators({ tabId, tabPayload, timeoutMs }) {
       }
     }
 
+    if (now >= nextPingAt) {
+      nextPingAt = now + EMBEDDED_METADATA_TRANSLATOR_PING_INTERVAL_MS;
+      pingAttemptCount += 1;
+      const pingResult = await probeConnectorContentScriptInTopFrame(tabId);
+      if (!pingResult.ok) {
+        lastReadError = pingResult.error;
+      } else if (pingResult.result === "pong") {
+        pingResponded = true;
+      }
+    }
+
     await delay(EMBEDDED_METADATA_TRANSLATOR_POLL_INTERVAL_MS);
   }
 
@@ -461,7 +476,7 @@ async function waitForTabTranslators({ tabId, tabPayload, timeoutMs }) {
       typeof lastReadError === "string" && lastReadError.length > 0
         ? `Timed out while waiting for Embedded Metadata translator: ${lastReadError}`
         : sawMissingTranslatorState
-          ? `Timed out while waiting for Embedded Metadata translator. Connector did not publish translator candidates for this tab (refresh attempts: ${refreshAttemptCount}, reinjection attempts: ${reinjectionAttemptCount}).`
+          ? `Timed out while waiting for Embedded Metadata translator. Connector did not publish translator candidates for this tab (refresh attempts: ${refreshAttemptCount}, reinjection attempts: ${reinjectionAttemptCount}, ping attempts: ${pingAttemptCount}, ping responded: ${pingResponded}).`
           : "Timed out while waiting for Embedded Metadata translator."
   };
 }
@@ -476,7 +491,15 @@ function triggerEmbeddedTranslatorRefresh(tabId) {
   return runBridgeCommand({
     tabId,
     timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
-    command: ["Messaging.sendMessage", ["pageModified", null, tabId, 0]]
+    command: ["Messaging.sendMessage", ["pageModified", null, tabId, null]]
+  });
+}
+
+function probeConnectorContentScriptInTopFrame(tabId) {
+  return runBridgeCommand({
+    tabId,
+    timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
+    command: ["Messaging.sendMessage", ["ping", null, tabId, 0]]
   });
 }
 
