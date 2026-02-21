@@ -10,6 +10,8 @@ const CONNECTOR_BRIDGE_IFRAME_PATH = "chromeMessageIframe/messageIframe.html";
 const BRIDGE_HEALTH_TIMEOUT_MS = 4000;
 const BRIDGE_SAVE_TIMEOUT_MS = 120000;
 const BRIDGE_DEFAULT_FRAME_TIMEOUT_MS = 8000;
+const EMBEDDED_METADATA_TRANSLATOR_WAIT_TIMEOUT_MS = 12000;
+const EMBEDDED_METADATA_TRANSLATOR_POLL_INTERVAL_MS = 250;
 const CONNECTOR_OFFLINE_SAVE_MESSAGE =
   "Zotero Connector reports the local Zotero client as offline for bridge save.";
 const CONNECTOR_HEALTHY_MESSAGE =
@@ -342,19 +344,18 @@ function isEmbeddedMetadataMode(zoteroSaveMode) {
 }
 
 async function saveWithEmbeddedMetadataTranslator({ tabId, tabPayload }) {
-  const tabInfoResult = await runBridgeCommand({
+  const translatorInfoResult = await waitForTabTranslators({
     tabId,
-    timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
-    command: ["Connector_Browser.getTabInfo", [tabId]]
+    timeoutMs: EMBEDDED_METADATA_TRANSLATOR_WAIT_TIMEOUT_MS
   });
-  if (!tabInfoResult.ok) {
+  if (!translatorInfoResult.ok) {
     return {
       ok: false,
-      error: `Unable to read connector tab translator state: ${tabInfoResult.error}`
+      error: translatorInfoResult.error
     };
   }
 
-  const translatorIndex = findEmbeddedMetadataTranslatorIndex(tabInfoResult.result?.translators);
+  const translatorIndex = findEmbeddedMetadataTranslatorIndex(translatorInfoResult.translators);
   if (translatorIndex < 0) {
     return {
       ok: false,
@@ -362,7 +363,7 @@ async function saveWithEmbeddedMetadataTranslator({ tabId, tabPayload }) {
     };
   }
 
-  return runBridgeCommand({
+  const saveResult = await runBridgeCommand({
     tabId,
     timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
     command: [
@@ -370,6 +371,19 @@ async function saveWithEmbeddedMetadataTranslator({ tabId, tabPayload }) {
       [tabPayload, translatorIndex, { fallbackOnFailure: false }]
     ]
   });
+  if (!saveResult.ok) {
+    return saveResult;
+  }
+
+  if (!Array.isArray(saveResult.result) || saveResult.result.length === 0) {
+    return {
+      ok: false,
+      error:
+        "Embedded Metadata translator returned no saved items. The page may not support this translator."
+    };
+  }
+
+  return saveResult;
 }
 
 function findEmbeddedMetadataTranslatorIndex(translators) {
@@ -380,6 +394,50 @@ function findEmbeddedMetadataTranslatorIndex(translators) {
   return translators.findIndex((translator) => {
     const label = typeof translator?.label === "string" ? translator.label.trim().toLowerCase() : "";
     return label === EMBEDDED_METADATA_TRANSLATOR_LABEL;
+  });
+}
+
+async function waitForTabTranslators({ tabId, timeoutMs }) {
+  const normalizedTimeoutMs = Math.max(1000, Math.trunc(timeoutMs));
+  const deadline = Date.now() + normalizedTimeoutMs;
+  let lastReadError = null;
+
+  while (Date.now() < deadline) {
+    const tabInfoResult = await runBridgeCommand({
+      tabId,
+      timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
+      command: ["Connector_Browser.getTabInfo", [tabId]]
+    });
+
+    if (tabInfoResult.ok) {
+      const translators = Array.isArray(tabInfoResult.result?.translators)
+        ? tabInfoResult.result.translators
+        : [];
+      if (translators.length > 0) {
+        return {
+          ok: true,
+          translators
+        };
+      }
+    } else {
+      lastReadError = tabInfoResult.error;
+    }
+
+    await delay(EMBEDDED_METADATA_TRANSLATOR_POLL_INTERVAL_MS);
+  }
+
+  return {
+    ok: false,
+    error:
+      typeof lastReadError === "string" && lastReadError.length > 0
+        ? `Timed out while waiting for Embedded Metadata translator: ${lastReadError}`
+        : "Timed out while waiting for Embedded Metadata translator."
+  };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
   });
 }
 

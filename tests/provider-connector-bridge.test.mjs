@@ -137,7 +137,7 @@ test("connector bridge saveWebPageWithSnapshot uses Embedded Metadata translator
       }
       if (commandName === "Connector_Browser.saveWithTranslator") {
         observedTranslatorSaveArgs = commandArgs;
-        return { ok: true, result: { ok: true } };
+        return { ok: true, result: [{ itemType: "webpage", title: "Article" }] };
       }
       return { ok: false, error: `Unexpected command: ${String(commandName)}` };
     },
@@ -222,6 +222,44 @@ test("connector bridge embedded mode fails when Embedded Metadata translator is 
 
   assert.equal(result.ok, false);
   assert.match(result.error, /embedded metadata translator is unavailable/i);
+});
+
+test("connector bridge embedded mode fails when translator save returns no items", async (t) => {
+  const chromeMock = installBridgeChromeMock({
+    executeScriptResponder: async ({ commandName }) => {
+      if (commandName === "Connector_Browser.injectTranslationScripts") {
+        return { ok: true, result: true };
+      }
+      if (commandName === "Connector.checkIsOnline") {
+        return { ok: true, result: true };
+      }
+      if (commandName === "Connector_Browser.getTabInfo") {
+        return {
+          ok: true,
+          result: {
+            translators: [{ label: "Embedded Metadata" }]
+          }
+        };
+      }
+      if (commandName === "Connector_Browser.saveWithTranslator") {
+        return { ok: true, result: undefined };
+      }
+      return { ok: false, error: "Unexpected command." };
+    },
+    tabsById: new Map([
+      [42, { id: 42, url: "https://example.com/no-items", title: "No Items Case" }]
+    ])
+  });
+  t.after(() => chromeMock.restore());
+
+  const provider = createConnectorBridgeProvider();
+  const result = await provider.saveWebPageWithSnapshot({
+    tabId: 42,
+    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /returned no saved items/i);
 });
 
 test("connector bridge saveWebPageWithSnapshot fails when preparation step fails", async (t) => {
