@@ -224,6 +224,95 @@ test("connector bridge embedded mode fails when Embedded Metadata translator is 
   assert.match(result.error, /embedded metadata translator is unavailable/i);
 });
 
+test("connector bridge embedded mode treats empty translator lists as unavailable", async (t) => {
+  const chromeMock = installBridgeChromeMock({
+    executeScriptResponder: async ({ commandName }) => {
+      if (commandName === "Connector_Browser.injectTranslationScripts") {
+        return { ok: true, result: true };
+      }
+      if (commandName === "Connector.checkIsOnline") {
+        return { ok: true, result: true };
+      }
+      if (commandName === "Connector_Browser.getTabInfo") {
+        return {
+          ok: true,
+          result: {
+            translators: []
+          }
+        };
+      }
+      return { ok: false, error: "Unexpected command." };
+    },
+    tabsById: new Map([
+      [43, { id: 43, url: "https://example.com/no-translators", title: "No Translators" }]
+    ])
+  });
+  t.after(() => chromeMock.restore());
+
+  const provider = createConnectorBridgeProvider();
+  const result = await provider.saveWebPageWithSnapshot({
+    tabId: 43,
+    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /embedded metadata translator is unavailable/i);
+  assert.doesNotMatch(result.error, /timed out while waiting for embedded metadata translator/i);
+});
+
+test(
+  "connector bridge embedded mode refreshes translator detection when tab info has no translators state yet",
+  async (t) => {
+    let refreshObserved = false;
+    let observedRefreshCommandArgs = null;
+    let getTabInfoCalls = 0;
+
+    const chromeMock = installBridgeChromeMock({
+      executeScriptResponder: async ({ commandName, commandArgs }) => {
+        if (commandName === "Connector_Browser.injectTranslationScripts") {
+          return { ok: true, result: true };
+        }
+        if (commandName === "Connector.checkIsOnline") {
+          return { ok: true, result: true };
+        }
+        if (commandName === "Connector_Browser.getTabInfo") {
+          getTabInfoCalls += 1;
+          return {
+            ok: true,
+            result: {
+              translators: refreshObserved ? [{ label: "Embedded Metadata" }] : null
+            }
+          };
+        }
+        if (commandName === "Messaging.sendMessage") {
+          observedRefreshCommandArgs = commandArgs;
+          refreshObserved = true;
+          return { ok: true, result: true };
+        }
+        if (commandName === "Connector_Browser.saveWithTranslator") {
+          return { ok: true, result: [{ itemType: "webpage", title: "Refreshed Article" }] };
+        }
+        return { ok: false, error: "Unexpected command." };
+      },
+      tabsById: new Map([
+        [44, { id: 44, url: "https://example.com/needs-refresh", title: "Needs Refresh" }]
+      ])
+    });
+    t.after(() => chromeMock.restore());
+
+    const provider = createConnectorBridgeProvider();
+    const result = await provider.saveWebPageWithSnapshot({
+      tabId: 44,
+      zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(refreshObserved, true);
+    assert.ok(getTabInfoCalls >= 2);
+    assert.deepEqual(observedRefreshCommandArgs, ["pageModified", null, 44, 0]);
+  }
+);
+
 test("connector bridge embedded mode fails when translator save returns no items", async (t) => {
   const chromeMock = installBridgeChromeMock({
     executeScriptResponder: async ({ commandName }) => {

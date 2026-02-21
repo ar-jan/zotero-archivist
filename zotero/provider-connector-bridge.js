@@ -401,6 +401,7 @@ async function waitForTabTranslators({ tabId, timeoutMs }) {
   const normalizedTimeoutMs = Math.max(1000, Math.trunc(timeoutMs));
   const deadline = Date.now() + normalizedTimeoutMs;
   let lastReadError = null;
+  let refreshRequested = false;
 
   while (Date.now() < deadline) {
     const tabInfoResult = await runBridgeCommand({
@@ -410,14 +411,19 @@ async function waitForTabTranslators({ tabId, timeoutMs }) {
     });
 
     if (tabInfoResult.ok) {
-      const translators = Array.isArray(tabInfoResult.result?.translators)
-        ? tabInfoResult.result.translators
-        : [];
-      if (translators.length > 0) {
+      if (Array.isArray(tabInfoResult.result?.translators)) {
         return {
           ok: true,
-          translators
+          translators: tabInfoResult.result.translators
         };
+      }
+
+      if (!refreshRequested) {
+        refreshRequested = true;
+        const refreshResult = await triggerEmbeddedTranslatorRefresh(tabId);
+        if (!refreshResult.ok) {
+          lastReadError = refreshResult.error;
+        }
       }
     } else {
       lastReadError = tabInfoResult.error;
@@ -438,6 +444,14 @@ async function waitForTabTranslators({ tabId, timeoutMs }) {
 function delay(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
+  });
+}
+
+function triggerEmbeddedTranslatorRefresh(tabId) {
+  return runBridgeCommand({
+    tabId,
+    timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
+    command: ["Messaging.sendMessage", ["pageModified", null, tabId, 0]]
   });
 }
 
