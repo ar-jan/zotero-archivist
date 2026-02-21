@@ -98,7 +98,7 @@ test("provider orchestrator saveQueueItemWithProvider returns unavailable messag
   assert.match(diagnosticsWrites.at(-1).lastError, /probe failed/i);
 });
 
-test("provider orchestrator saveQueueItemWithProvider reports success and keeps diagnostics clean", async () => {
+test("provider orchestrator saveQueueItemWithProvider normalizes invalid save mode and keeps diagnostics clean", async () => {
   const diagnosticsWrites = [];
   let observedSaveInput = null;
   const orchestrator = createProviderOrchestrator({
@@ -125,11 +125,11 @@ test("provider orchestrator saveQueueItemWithProvider reports success and keeps 
   const result = await orchestrator.saveQueueItemWithProvider({
     queueItem: { url: "https://example.com/save", title: "Save" },
     tabId: 12,
-    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+    zoteroSaveMode: "unsupported_mode"
   });
 
   assert.equal(result.ok, true);
-  assert.equal(observedSaveInput?.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA);
+  assert.equal(observedSaveInput?.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
   assert.equal(diagnosticsWrites.at(-1).lastError, null);
 });
 

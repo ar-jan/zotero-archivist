@@ -1,5 +1,4 @@
 import { SAVE_PROVIDER_MODES } from "../shared/protocol.js";
-import { QUEUE_ZOTERO_SAVE_MODES } from "../shared/state.js";
 import {
   createProviderSaveSuccess,
   createProviderSaveError
@@ -10,11 +9,6 @@ const CONNECTOR_BRIDGE_IFRAME_PATH = "chromeMessageIframe/messageIframe.html";
 const BRIDGE_HEALTH_TIMEOUT_MS = 4000;
 const BRIDGE_SAVE_TIMEOUT_MS = 120000;
 const BRIDGE_DEFAULT_FRAME_TIMEOUT_MS = 8000;
-const EMBEDDED_METADATA_TRANSLATOR_WAIT_TIMEOUT_MS = 30000;
-const EMBEDDED_METADATA_TRANSLATOR_POLL_INTERVAL_MS = 250;
-const EMBEDDED_METADATA_TRANSLATOR_REFRESH_INTERVAL_MS = 1000;
-const EMBEDDED_METADATA_TRANSLATOR_REINJECT_INTERVAL_MS = 3000;
-const EMBEDDED_METADATA_TRANSLATOR_PING_INTERVAL_MS = 1000;
 const CONNECTOR_OFFLINE_SAVE_MESSAGE =
   "Zotero Connector reports the local Zotero client as offline for bridge save.";
 const CONNECTOR_HEALTHY_MESSAGE =
@@ -25,7 +19,6 @@ const CONNECTOR_EXTENSION_UNAVAILABLE_MESSAGE =
   "Zotero Connector extension is unavailable. Ensure it is installed and enabled.";
 const CONNECTOR_PROBE_TAB_REQUIRED_MESSAGE =
   "Connector probe requires an open http(s) tab with granted site access.";
-const EMBEDDED_METADATA_TRANSLATOR_LABEL = "embedded metadata";
 
 export function createConnectorBridgeProvider() {
   return {
@@ -138,19 +131,14 @@ export function createConnectorBridgeProvider() {
         return createProviderSaveError(CONNECTOR_OFFLINE_SAVE_MESSAGE);
       }
 
-      const saveResult = isEmbeddedMetadataMode(input?.zoteroSaveMode)
-        ? await saveWithEmbeddedMetadataTranslator({
-            tabId: input.tabId,
-            tabPayload
-          })
-        : await runBridgeCommand({
-            tabId: input.tabId,
-            timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
-            command: [
-              "Messaging.sendMessage",
-              ["saveAsWebpage", [tabPayload.title, { snapshot: true }], tabPayload.id, 0]
-            ]
-          });
+      const saveResult = await runBridgeCommand({
+        tabId: input.tabId,
+        timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
+        command: [
+          "Messaging.sendMessage",
+          ["saveAsWebpage", [tabPayload.title, { snapshot: true }], tabPayload.id, 0]
+        ]
+      });
       if (!saveResult.ok) {
         return createProviderSaveError(`Connector bridge save failed: ${saveResult.error}`);
       }
@@ -340,167 +328,6 @@ function isConnectorUnavailableError(errorMessage) {
   }
 
   return false;
-}
-
-function isEmbeddedMetadataMode(zoteroSaveMode) {
-  return zoteroSaveMode === QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA;
-}
-
-async function saveWithEmbeddedMetadataTranslator({ tabId, tabPayload }) {
-  const translatorInfoResult = await waitForTabTranslators({
-    tabId,
-    tabPayload,
-    timeoutMs: EMBEDDED_METADATA_TRANSLATOR_WAIT_TIMEOUT_MS
-  });
-  if (!translatorInfoResult.ok) {
-    return {
-      ok: false,
-      error: translatorInfoResult.error
-    };
-  }
-
-  const translatorIndex = findEmbeddedMetadataTranslatorIndex(translatorInfoResult.translators);
-  if (translatorIndex < 0) {
-    return {
-      ok: false,
-      error: "Embedded Metadata translator is unavailable for this page."
-    };
-  }
-
-  const saveResult = await runBridgeCommand({
-    tabId,
-    timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
-    command: [
-      "Connector_Browser.saveWithTranslator",
-      [tabPayload, translatorIndex, { fallbackOnFailure: false }]
-    ]
-  });
-  if (!saveResult.ok) {
-    return saveResult;
-  }
-
-  if (!Array.isArray(saveResult.result) || saveResult.result.length === 0) {
-    return {
-      ok: false,
-      error:
-        "Embedded Metadata translator returned no saved items. The page may not support this translator."
-    };
-  }
-
-  return saveResult;
-}
-
-function findEmbeddedMetadataTranslatorIndex(translators) {
-  if (!Array.isArray(translators) || translators.length === 0) {
-    return -1;
-  }
-
-  return translators.findIndex((translator) => {
-    const label = typeof translator?.label === "string" ? translator.label.trim().toLowerCase() : "";
-    return label === EMBEDDED_METADATA_TRANSLATOR_LABEL;
-  });
-}
-
-async function waitForTabTranslators({ tabId, tabPayload, timeoutMs }) {
-  const normalizedTimeoutMs = Math.max(1000, Math.trunc(timeoutMs));
-  const deadline = Date.now() + normalizedTimeoutMs;
-  let lastReadError = null;
-  let nextRefreshAt = Date.now();
-  let nextReinjectAt = Date.now();
-  let nextPingAt = Date.now();
-  let sawMissingTranslatorState = false;
-  let refreshAttemptCount = 0;
-  let reinjectionAttemptCount = 0;
-  let pingAttemptCount = 0;
-  let pingResponded = false;
-
-  while (Date.now() < deadline) {
-    const tabInfoResult = await runBridgeCommand({
-      tabId,
-      timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
-      command: ["Connector_Browser.getTabInfo", [tabId]]
-    });
-
-    if (tabInfoResult.ok) {
-      if (Array.isArray(tabInfoResult.result?.translators)) {
-        return {
-          ok: true,
-          translators: tabInfoResult.result.translators
-        };
-      }
-      sawMissingTranslatorState = true;
-    } else {
-      lastReadError = tabInfoResult.error;
-    }
-
-    const now = Date.now();
-    if (now >= nextReinjectAt && tabPayload && Number.isInteger(tabPayload.id)) {
-      nextReinjectAt = now + EMBEDDED_METADATA_TRANSLATOR_REINJECT_INTERVAL_MS;
-      reinjectionAttemptCount += 1;
-      const reinjectionResult = await runBridgeCommand({
-        tabId,
-        timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
-        command: ["Connector_Browser.injectTranslationScripts", [tabPayload, 0]]
-      });
-      if (!reinjectionResult.ok) {
-        lastReadError = reinjectionResult.error;
-      }
-    }
-
-    if (now >= nextRefreshAt) {
-      nextRefreshAt = now + EMBEDDED_METADATA_TRANSLATOR_REFRESH_INTERVAL_MS;
-      refreshAttemptCount += 1;
-      const refreshResult = await triggerEmbeddedTranslatorRefresh(tabId);
-      if (!refreshResult.ok) {
-        lastReadError = refreshResult.error;
-      }
-    }
-
-    if (now >= nextPingAt) {
-      nextPingAt = now + EMBEDDED_METADATA_TRANSLATOR_PING_INTERVAL_MS;
-      pingAttemptCount += 1;
-      const pingResult = await probeConnectorContentScriptInTopFrame(tabId);
-      if (!pingResult.ok) {
-        lastReadError = pingResult.error;
-      } else if (pingResult.result === "pong") {
-        pingResponded = true;
-      }
-    }
-
-    await delay(EMBEDDED_METADATA_TRANSLATOR_POLL_INTERVAL_MS);
-  }
-
-  return {
-    ok: false,
-    error:
-      typeof lastReadError === "string" && lastReadError.length > 0
-        ? `Timed out while waiting for Embedded Metadata translator: ${lastReadError}`
-        : sawMissingTranslatorState
-          ? `Timed out while waiting for Embedded Metadata translator. Connector did not publish translator candidates for this tab (refresh attempts: ${refreshAttemptCount}, reinjection attempts: ${reinjectionAttemptCount}, ping attempts: ${pingAttemptCount}, ping responded: ${pingResponded}).`
-          : "Timed out while waiting for Embedded Metadata translator."
-  };
-}
-
-function delay(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-function triggerEmbeddedTranslatorRefresh(tabId) {
-  return runBridgeCommand({
-    tabId,
-    timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
-    command: ["Messaging.sendMessage", ["pageModified", null, tabId, null]]
-  });
-}
-
-function probeConnectorContentScriptInTopFrame(tabId) {
-  return runBridgeCommand({
-    tabId,
-    timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
-    command: ["Messaging.sendMessage", ["ping", null, tabId, 0]]
-  });
 }
 
 async function runBridgeCommand({ tabId, timeoutMs, command }) {

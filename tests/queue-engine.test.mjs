@@ -59,7 +59,7 @@ test("runQueueEngineSoon archives an active item when provider save succeeds", a
   assert.ok(chromeMock.alarms.cleared.includes(QUEUE_ENGINE_ALARM_NAME));
 });
 
-test("runQueueEngineSoon passes configured Zotero save mode to provider", async (t) => {
+test("runQueueEngineSoon normalizes configured Zotero save mode before provider call", async (t) => {
   const chromeMock = installChromeMock({
     tabsById: new Map([
       [151, { id: 151, url: "https://example.com/mode", status: "complete" }]
@@ -78,7 +78,7 @@ test("runQueueEngineSoon passes configured Zotero save mode to provider", async 
     queueSettings: {
       interItemDelayMs: 0,
       interItemDelayJitterMs: 0,
-      zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+      zoteroSaveMode: "unsupported_mode"
     },
     saveQueueItemWithProvider: async (input) => {
       observedProviderInput = input;
@@ -89,7 +89,7 @@ test("runQueueEngineSoon passes configured Zotero save mode to provider", async 
   await harness.queueEngine.runQueueEngineSoon("test-save-mode");
   await harness.queueEngine.waitForIdle();
 
-  assert.equal(observedProviderInput?.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA);
+  assert.equal(observedProviderInput?.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
 });
 
 test("runQueueEngineSoon waits configured delay before processing next item", async (t) => {

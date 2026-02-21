@@ -23,8 +23,7 @@ export const DEFAULT_QUEUE_SETTINGS = Object.freeze({
   zoteroSaveMode: "webpage_with_snapshot"
 });
 export const QUEUE_ZOTERO_SAVE_MODES = Object.freeze({
-  WEBPAGE_WITH_SNAPSHOT: "webpage_with_snapshot",
-  EMBEDDED_METADATA: "embedded_metadata"
+  WEBPAGE_WITH_SNAPSHOT: "webpage_with_snapshot"
 });
 
 const QUEUE_ITEM_STATUS_SET = new Set(QUEUE_ITEM_STATUSES);
@@ -426,11 +425,7 @@ function normalizeQueueInterItemJitterMs(value) {
 }
 
 function normalizeQueueZoteroSaveMode(value) {
-  if (
-    typeof value === "string" &&
-    (value === QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT ||
-      value === QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA)
-  ) {
+  if (typeof value === "string" && value === QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT) {
     return value;
   }
 

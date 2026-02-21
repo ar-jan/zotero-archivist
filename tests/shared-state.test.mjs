@@ -85,10 +85,10 @@ test("normalizeQueueSettings applies defaults and clamps delay bounds", () => {
   assert.equal(clampedHigh.interItemDelayJitterMs, 60000);
   assert.equal(clampedHigh.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
 
-  const embeddedMetadata = normalizeQueueSettings({
-    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+  const unsupportedMode = normalizeQueueSettings({
+    zoteroSaveMode: "unsupported_mode"
   });
-  assert.equal(embeddedMetadata.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA);
+  assert.equal(unsupportedMode.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
 });
 
 test("normalizeQueueItems normalizes status and dedupes urls", () => {

@@ -4,7 +4,6 @@ import {
   isHttpUrl
 } from "../shared/protocol.js";
 import {
-  QUEUE_ZOTERO_SAVE_MODES,
   getQueueItemCounts,
   normalizeQueueSettings
 } from "../shared/state.js";
@@ -664,7 +663,7 @@ async function saveQueueSettings() {
     const savedQueueSettings = normalizeQueueSettings(response.queueSettings);
     setQueueSettingsState(savedQueueSettings);
     setStatus(
-      `Queue delay set to ${formatSecondsLabel(savedQueueSettings.interItemDelayMs)} +/- ${formatSecondsLabel(savedQueueSettings.interItemDelayJitterMs)} (${formatQueueSaveModeLabel(savedQueueSettings.zoteroSaveMode)}).`
+      `Queue delay set to ${formatSecondsLabel(savedQueueSettings.interItemDelayMs)} +/- ${formatSecondsLabel(savedQueueSettings.interItemDelayJitterMs)} (${formatQueueSaveModeLabel()}).`
     );
   } catch (error) {
     console.error("[webpage-archivist] Failed to save queue settings.", error);
@@ -707,11 +706,7 @@ function formatSecondsLabel(milliseconds) {
   return `${formatSecondsInput(milliseconds)}s`;
 }
 
-function formatQueueSaveModeLabel(queueSaveMode) {
-  if (queueSaveMode === QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA) {
-    return "Embedded Metadata";
-  }
-
+function formatQueueSaveModeLabel() {
   return "Web Page with Snapshot";
 }
 
