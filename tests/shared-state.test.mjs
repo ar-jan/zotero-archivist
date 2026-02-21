@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { routeMessage } from "../background/message-router.js";
 import {
+  QUEUE_ZOTERO_SAVE_MODES,
   clearQueueRuntimeActive,
   createDefaultQueueRuntimeState,
   getQueueItemCounts,
@@ -66,6 +67,7 @@ test("normalizeQueueSettings applies defaults and clamps delay bounds", () => {
   const defaults = normalizeQueueSettings(null);
   assert.equal(defaults.interItemDelayMs, 5000);
   assert.equal(defaults.interItemDelayJitterMs, 2000);
+  assert.equal(defaults.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
 
   const clampedLow = normalizeQueueSettings({
     interItemDelayMs: -100,
@@ -76,10 +78,17 @@ test("normalizeQueueSettings applies defaults and clamps delay bounds", () => {
 
   const clampedHigh = normalizeQueueSettings({
     interItemDelayMs: 999999,
-    interItemDelayJitterMs: 999999
+    interItemDelayJitterMs: 999999,
+    zoteroSaveMode: "invalid"
   });
   assert.equal(clampedHigh.interItemDelayMs, 600000);
   assert.equal(clampedHigh.interItemDelayJitterMs, 60000);
+  assert.equal(clampedHigh.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
+
+  const embeddedMetadata = normalizeQueueSettings({
+    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+  });
+  assert.equal(embeddedMetadata.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA);
 });
 
 test("normalizeQueueItems normalizes status and dedupes urls", () => {

@@ -1,10 +1,11 @@
 import { createConnectorBridgeProvider } from "../zotero/provider-connector-bridge.js";
+import { normalizeQueueSettings } from "../shared/state.js";
 
 export function createProviderOrchestrator({
   saveProviderDiagnostics,
   createConnectorBridgeProviderImpl = createConnectorBridgeProvider
 }) {
-  async function saveQueueItemWithProvider({ queueItem, tabId }) {
+  async function saveQueueItemWithProvider({ queueItem, tabId, zoteroSaveMode }) {
     const { provider, diagnostics, unavailableReason } = await resolveSaveProvider({ tabId });
     if (!provider || typeof provider.saveWebPageWithSnapshot !== "function") {
       const unavailableMessage = formatConnectorBridgeUnavailableMessage(
@@ -22,12 +23,17 @@ export function createProviderOrchestrator({
       };
     }
 
+    const normalizedQueueSettings = normalizeQueueSettings({
+      zoteroSaveMode
+    });
+
     let providerResult;
     try {
       providerResult = await provider.saveWebPageWithSnapshot({
         tabId,
         url: queueItem.url,
-        title: queueItem.title
+        title: queueItem.title,
+        zoteroSaveMode: normalizedQueueSettings.zoteroSaveMode
       });
     } catch (error) {
       const thrownMessage = `Provider ${provider.mode} threw: ${String(error)}`;

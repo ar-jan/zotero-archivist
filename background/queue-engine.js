@@ -99,10 +99,13 @@ export function createQueueEngine({
       };
       queueItems[activeIndex] = itemForSave;
       await saveQueueItems(queueItems);
+      const queueSettings = await getQueueSettingsSafely();
+      const normalizedQueueSettings = normalizeQueueSettings(queueSettings);
 
       const saveResult = await saveQueueItemWithProvider({
         queueItem: itemForSave,
-        tabId: activeTabId
+        tabId: activeTabId,
+        zoteroSaveMode: normalizedQueueSettings.zoteroSaveMode
       });
 
       queueItems = await getQueueItems();

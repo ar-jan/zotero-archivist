@@ -3,7 +3,11 @@ import {
   STORAGE_KEYS,
   isHttpUrl
 } from "../shared/protocol.js";
-import { getQueueItemCounts, normalizeQueueSettings } from "../shared/state.js";
+import {
+  QUEUE_ZOTERO_SAVE_MODES,
+  getQueueItemCounts,
+  normalizeQueueSettings
+} from "../shared/state.js";
 import {
   authorQueueFromSelectionAction,
   clearArchivedQueueAction,
@@ -71,6 +75,7 @@ const stopQueueButton = document.getElementById("stop-queue-button");
 const retryFailedQueueButton = document.getElementById("retry-failed-queue-button");
 const queueDelaySecondsInput = document.getElementById("queue-delay-seconds-input");
 const queueJitterSecondsInput = document.getElementById("queue-jitter-seconds-input");
+const queueZoteroSaveModeSelect = document.getElementById("queue-zotero-save-mode-select");
 const saveQueueSettingsButton = document.getElementById("save-queue-settings-button");
 const rulesSummaryEl = document.getElementById("rules-summary");
 const integrationModeEl = document.getElementById("integration-mode");
@@ -630,6 +635,7 @@ function renderQueueSettingsForm(queueSettings) {
   const normalizedQueueSettings = normalizeQueueSettings(queueSettings);
   queueDelaySecondsInput.value = formatSecondsInput(normalizedQueueSettings.interItemDelayMs);
   queueJitterSecondsInput.value = formatSecondsInput(normalizedQueueSettings.interItemDelayJitterMs);
+  queueZoteroSaveModeSelect.value = normalizedQueueSettings.zoteroSaveMode;
 }
 
 function updateQueueSettingsActionState() {
@@ -658,7 +664,7 @@ async function saveQueueSettings() {
     const savedQueueSettings = normalizeQueueSettings(response.queueSettings);
     setQueueSettingsState(savedQueueSettings);
     setStatus(
-      `Queue delay set to ${formatSecondsLabel(savedQueueSettings.interItemDelayMs)} +/- ${formatSecondsLabel(savedQueueSettings.interItemDelayJitterMs)}.`
+      `Queue delay set to ${formatSecondsLabel(savedQueueSettings.interItemDelayMs)} +/- ${formatSecondsLabel(savedQueueSettings.interItemDelayJitterMs)} (${formatQueueSaveModeLabel(savedQueueSettings.zoteroSaveMode)}).`
     );
   } catch (error) {
     console.error("[webpage-archivist] Failed to save queue settings.", error);
@@ -684,7 +690,8 @@ function readQueueSettingsFromInputs() {
 
   return normalizeQueueSettings({
     interItemDelayMs: Math.round(delaySeconds * QUEUE_SETTINGS_MILLISECONDS_PER_SECOND),
-    interItemDelayJitterMs: Math.round(jitterSeconds * QUEUE_SETTINGS_MILLISECONDS_PER_SECOND)
+    interItemDelayJitterMs: Math.round(jitterSeconds * QUEUE_SETTINGS_MILLISECONDS_PER_SECOND),
+    zoteroSaveMode: queueZoteroSaveModeSelect.value
   });
 }
 
@@ -698,6 +705,14 @@ function formatSecondsInput(milliseconds) {
 
 function formatSecondsLabel(milliseconds) {
   return `${formatSecondsInput(milliseconds)}s`;
+}
+
+function formatQueueSaveModeLabel(queueSaveMode) {
+  if (queueSaveMode === QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA) {
+    return "Embedded Metadata";
+  }
+
+  return "Web Page with Snapshot";
 }
 
 function messageFromError(error) {

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { DEFAULT_SELECTOR_RULES, STORAGE_KEYS } from "../shared/protocol.js";
+import { QUEUE_ZOTERO_SAVE_MODES } from "../shared/state.js";
 import {
   getCollectorSettings,
   getProviderDiagnostics,
@@ -55,6 +56,7 @@ test("storage repo initializes queue settings defaults when missing", async (t) 
 
   assert.equal(queueSettings.interItemDelayMs, 5000);
   assert.equal(queueSettings.interItemDelayJitterMs, 2000);
+  assert.equal(queueSettings.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
   assert.equal(chromeMock.writes.length, 1);
   assert.equal(Boolean(chromeMock.storageState[STORAGE_KEYS.QUEUE_SETTINGS]), true);
 });
@@ -63,7 +65,8 @@ test("storage repo normalizes malformed queue settings and writes back", async (
   const chromeMock = installStorageChromeMock({
     [STORAGE_KEYS.QUEUE_SETTINGS]: {
       interItemDelayMs: -20,
-      interItemDelayJitterMs: 999999
+      interItemDelayJitterMs: 999999,
+      zoteroSaveMode: "invalid"
     }
   });
   t.after(() => chromeMock.restore());
@@ -72,6 +75,7 @@ test("storage repo normalizes malformed queue settings and writes back", async (
 
   assert.equal(queueSettings.interItemDelayMs, 0);
   assert.equal(queueSettings.interItemDelayJitterMs, 60000);
+  assert.equal(queueSettings.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
   assert.equal(chromeMock.writes.length, 1);
 });
 

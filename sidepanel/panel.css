@@ -676,6 +676,15 @@ body {
   font-size: var(--font-size-xs);
 }
 
+.mini-select {
+  max-width: 170px;
+  padding: 2px 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-size: var(--font-size-xs);
+  background: var(--bg-surface);
+}
+
 .queue-item-remove-button {
   background: none;
   border: 1px solid var(--border-color);

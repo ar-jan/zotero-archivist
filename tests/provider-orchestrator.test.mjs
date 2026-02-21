@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createProviderOrchestrator } from "../background/provider-orchestrator.js";
+import { QUEUE_ZOTERO_SAVE_MODES } from "../shared/state.js";
 
 test("provider orchestrator resolves active provider when health check succeeds", async () => {
   const diagnosticsWrites = [];
@@ -99,6 +100,7 @@ test("provider orchestrator saveQueueItemWithProvider returns unavailable messag
 
 test("provider orchestrator saveQueueItemWithProvider reports success and keeps diagnostics clean", async () => {
   const diagnosticsWrites = [];
+  let observedSaveInput = null;
   const orchestrator = createProviderOrchestrator({
     createConnectorBridgeProviderImpl: () => ({
       mode: "connector_bridge",
@@ -109,7 +111,10 @@ test("provider orchestrator saveQueueItemWithProvider reports success and keeps 
         connectorAvailable: true,
         zoteroOnline: true
       }),
-      saveWebPageWithSnapshot: async () => ({ ok: true })
+      saveWebPageWithSnapshot: async (input) => {
+        observedSaveInput = input;
+        return { ok: true };
+      }
     }),
     saveProviderDiagnostics: async (diagnostics) => {
       diagnosticsWrites.push(diagnostics);
@@ -119,10 +124,12 @@ test("provider orchestrator saveQueueItemWithProvider reports success and keeps 
 
   const result = await orchestrator.saveQueueItemWithProvider({
     queueItem: { url: "https://example.com/save", title: "Save" },
-    tabId: 12
+    tabId: 12,
+    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
   });
 
   assert.equal(result.ok, true);
+  assert.equal(observedSaveInput?.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA);
   assert.equal(diagnosticsWrites.at(-1).lastError, null);
 });
 

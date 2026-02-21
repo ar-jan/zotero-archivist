@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createQueueEngine, QUEUE_ENGINE_ALARM_NAME } from "../background/queue-engine.js";
+import { QUEUE_ZOTERO_SAVE_MODES } from "../shared/state.js";
 
 const QUEUE_TAB_LOAD_MAX_WAIT_MS = 10 * 60 * 1000;
 
@@ -56,6 +57,39 @@ test("runQueueEngineSoon archives an active item when provider save succeeds", a
   assert.equal(queueRuntime.activeTabId, null);
   assert.deepEqual(chromeMock.tabs.removed, [51]);
   assert.ok(chromeMock.alarms.cleared.includes(QUEUE_ENGINE_ALARM_NAME));
+});
+
+test("runQueueEngineSoon passes configured Zotero save mode to provider", async (t) => {
+  const chromeMock = installChromeMock({
+    tabsById: new Map([
+      [151, { id: 151, url: "https://example.com/mode", status: "complete" }]
+    ])
+  });
+  t.after(() => chromeMock.restore());
+
+  let observedProviderInput = null;
+  const harness = createQueueEngineHarness({
+    queueItems: [createQueueItem({ id: "q-save-mode", url: "https://example.com/mode", status: "opening_tab" })],
+    queueRuntime: createQueueRuntime({
+      status: "running",
+      activeQueueItemId: "q-save-mode",
+      activeTabId: 151
+    }),
+    queueSettings: {
+      interItemDelayMs: 0,
+      interItemDelayJitterMs: 0,
+      zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+    },
+    saveQueueItemWithProvider: async (input) => {
+      observedProviderInput = input;
+      return { ok: true };
+    }
+  });
+
+  await harness.queueEngine.runQueueEngineSoon("test-save-mode");
+  await harness.queueEngine.waitForIdle();
+
+  assert.equal(observedProviderInput?.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA);
 });
 
 test("runQueueEngineSoon waits configured delay before processing next item", async (t) => {
@@ -335,7 +369,8 @@ function createQueueEngineHarness({
   queueRuntime = createQueueRuntime(),
   queueSettings = {
     interItemDelayMs: 0,
-    interItemDelayJitterMs: 0
+    interItemDelayJitterMs: 0,
+    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT
   },
   randomImpl = () => 0.5,
   saveQueueItemWithProvider = async () => ({ ok: true }),

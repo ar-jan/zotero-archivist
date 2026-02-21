@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createPanelStore } from "../sidepanel/store.js";
+import { QUEUE_ZOTERO_SAVE_MODES } from "../shared/state.js";
 
 test("panel store normalizes provider settings and diagnostics defaults", () => {
   const panelStore = createPanelStore();
@@ -11,6 +12,10 @@ test("panel store normalizes provider settings and diagnostics defaults", () => 
   assert.equal(panelStore.state.providerDiagnostics.connectorBridge.bridgeReady, null);
   assert.equal(panelStore.state.queueSettings.interItemDelayMs, 5000);
   assert.equal(panelStore.state.queueSettings.interItemDelayJitterMs, 2000);
+  assert.equal(
+    panelStore.state.queueSettings.zoteroSaveMode,
+    QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT
+  );
 });
 
 test("panel store normalizes queue settings updates", () => {
@@ -18,11 +23,13 @@ test("panel store normalizes queue settings updates", () => {
 
   const queueSettings = panelStore.setQueueSettings({
     interItemDelayMs: -1,
-    interItemDelayJitterMs: 999999
+    interItemDelayJitterMs: 999999,
+    zoteroSaveMode: "not-a-real-mode"
   });
 
   assert.equal(queueSettings.interItemDelayMs, 0);
   assert.equal(queueSettings.interItemDelayJitterMs, 60000);
+  assert.equal(queueSettings.zoteroSaveMode, QUEUE_ZOTERO_SAVE_MODES.WEBPAGE_WITH_SNAPSHOT);
 });
 
 test("panel store tracks integration in-progress state separately from queue state", () => {

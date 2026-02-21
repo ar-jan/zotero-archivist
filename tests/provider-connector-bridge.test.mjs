@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createConnectorBridgeProvider } from "../zotero/provider-connector-bridge.js";
+import { QUEUE_ZOTERO_SAVE_MODES } from "../shared/state.js";
 import { installBridgeChromeMock } from "./test-helpers/bridge-chrome-mock.mjs";
 
 test("connector bridge health check reports probe requirement when no eligible tab is available", async (t) => {
@@ -70,8 +71,9 @@ test("connector bridge health check maps iframe-loading failures to connector-un
 
 test("connector bridge saveWebPageWithSnapshot runs injection, online check, then save command", async (t) => {
   const observedCommands = [];
+  let observedSaveCommandArgs = null;
   const chromeMock = installBridgeChromeMock({
-    executeScriptResponder: async ({ commandName }) => {
+    executeScriptResponder: async ({ commandName, commandArgs }) => {
       observedCommands.push(commandName);
       if (commandName === "Connector_Browser.injectTranslationScripts") {
         return { ok: true, result: true };
@@ -80,6 +82,7 @@ test("connector bridge saveWebPageWithSnapshot runs injection, online check, the
         return { ok: true, result: true };
       }
       if (commandName === "Messaging.sendMessage") {
+        observedSaveCommandArgs = commandArgs;
         return { ok: true, result: { ok: true } };
       }
       return { ok: false, error: `Unexpected command: ${String(commandName)}` };
@@ -102,6 +105,51 @@ test("connector bridge saveWebPageWithSnapshot runs injection, online check, the
     "Connector_Browser.injectTranslationScripts",
     "Connector.checkIsOnline",
     "Messaging.sendMessage"
+  ]);
+  assert.deepEqual(observedSaveCommandArgs, [
+    "saveAsWebpage",
+    ["Article", { snapshot: true }],
+    3,
+    0
+  ]);
+});
+
+test("connector bridge saveWebPageWithSnapshot supports Embedded Metadata mode", async (t) => {
+  let observedSaveCommandArgs = null;
+  const chromeMock = installBridgeChromeMock({
+    executeScriptResponder: async ({ commandName, commandArgs }) => {
+      if (commandName === "Connector_Browser.injectTranslationScripts") {
+        return { ok: true, result: true };
+      }
+      if (commandName === "Connector.checkIsOnline") {
+        return { ok: true, result: true };
+      }
+      if (commandName === "Messaging.sendMessage") {
+        observedSaveCommandArgs = commandArgs;
+        return { ok: true, result: { ok: true } };
+      }
+      return { ok: false, error: `Unexpected command: ${String(commandName)}` };
+    },
+    tabsById: new Map([
+      [31, { id: 31, url: "https://example.com/article", title: "Article" }]
+    ])
+  });
+  t.after(() => chromeMock.restore());
+
+  const provider = createConnectorBridgeProvider();
+  const result = await provider.saveWebPageWithSnapshot({
+    tabId: 31,
+    url: "https://example.com/article",
+    title: "Article",
+    zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(observedSaveCommandArgs, [
+    "saveAsWebpage",
+    ["Article", { snapshot: false }],
+    31,
+    0
   ]);
 });
 

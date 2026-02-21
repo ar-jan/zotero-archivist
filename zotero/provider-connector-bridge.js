@@ -1,4 +1,5 @@
 import { SAVE_PROVIDER_MODES } from "../shared/protocol.js";
+import { QUEUE_ZOTERO_SAVE_MODES } from "../shared/state.js";
 import {
   createProviderSaveSuccess,
   createProviderSaveError
@@ -131,12 +132,13 @@ export function createConnectorBridgeProvider() {
         return createProviderSaveError(CONNECTOR_OFFLINE_SAVE_MESSAGE);
       }
 
+      const saveAsWebpageOptions = resolveSaveAsWebpageOptions(input?.zoteroSaveMode);
       const saveResult = await runBridgeCommand({
         tabId: input.tabId,
         timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
         command: [
           "Messaging.sendMessage",
-          ["saveAsWebpage", [tabPayload.title, { snapshot: true }], tabPayload.id, 0]
+          ["saveAsWebpage", [tabPayload.title, saveAsWebpageOptions], tabPayload.id, 0]
         ]
       });
       if (!saveResult.ok) {
@@ -328,6 +330,18 @@ function isConnectorUnavailableError(errorMessage) {
   }
 
   return false;
+}
+
+function resolveSaveAsWebpageOptions(zoteroSaveMode) {
+  if (zoteroSaveMode === QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA) {
+    return {
+      snapshot: false
+    };
+  }
+
+  return {
+    snapshot: true
+  };
 }
 
 async function runBridgeCommand({ tabId, timeoutMs, command }) {
