@@ -32,7 +32,26 @@ test("startQueue reports alreadyRunning when queue is already running", async ()
 
   assert.equal(response.ok, true);
   assert.equal(response.alreadyRunning, true);
-  assert.deepEqual(harness.calls.runQueueEngineSoon, []);
+  assert.deepEqual(harness.calls.runQueueEngineSoon, ["start-already-running"]);
+});
+
+test("startQueue clears stale delay when already running without active item", async () => {
+  const harness = createHarness({
+    queueRuntime: createQueueRuntime({
+      status: "running",
+      nextRunAt: Date.now() + 60000,
+      activeQueueItemId: null,
+      activeTabId: null
+    }),
+    queueItems: [createQueueItem({ id: "q1", status: "pending" })]
+  });
+
+  const response = await harness.handlers.startQueue();
+
+  assert.equal(response.ok, true);
+  assert.equal(response.queueRuntime.nextRunAt, null);
+  assert.equal(harness.state.queueRuntime.nextRunAt, null);
+  assert.deepEqual(harness.calls.runQueueEngineSoon, ["start-already-running"]);
 });
 
 test("startQueue rejects when queue is paused or has no pending items", async () => {

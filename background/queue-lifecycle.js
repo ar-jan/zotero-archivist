@@ -107,9 +107,29 @@ export function createQueueLifecycleHandlers({
   async function startQueue(queueRuntimeContext = undefined) {
     const queueRuntime = await getQueueRuntime();
     if (queueRuntime.status === "running") {
+      const queueItems = await getQueueItems();
+      const hasPending = queueItems.some((item) => item.status === "pending");
+      const hasActiveQueueItem =
+        typeof queueRuntime.activeQueueItemId === "string" &&
+        Number.isInteger(queueRuntime.activeTabId);
+
+      let nextRuntime = queueRuntime;
+      if (!hasActiveQueueItem && Number.isFinite(queueRuntime.nextRunAt)) {
+        nextRuntime = {
+          ...queueRuntime,
+          nextRunAt: null,
+          updatedAt: Date.now()
+        };
+        await saveQueueRuntime(nextRuntime);
+      }
+
+      if (hasPending || hasActiveQueueItem) {
+        queueEngine.runQueueEngineSoon("start-already-running");
+      }
+
       return createSuccess({
-        queueRuntime,
-        queueItems: await getQueueItems(),
+        queueRuntime: nextRuntime,
+        queueItems,
         alreadyRunning: true
       });
     }
