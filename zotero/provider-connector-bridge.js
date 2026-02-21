@@ -20,6 +20,7 @@ const CONNECTOR_EXTENSION_UNAVAILABLE_MESSAGE =
   "Zotero Connector extension is unavailable. Ensure it is installed and enabled.";
 const CONNECTOR_PROBE_TAB_REQUIRED_MESSAGE =
   "Connector probe requires an open http(s) tab with granted site access.";
+const EMBEDDED_METADATA_TRANSLATOR_LABEL = "embedded metadata";
 
 export function createConnectorBridgeProvider() {
   return {
@@ -132,18 +133,19 @@ export function createConnectorBridgeProvider() {
         return createProviderSaveError(CONNECTOR_OFFLINE_SAVE_MESSAGE);
       }
 
-      const saveAsWebpageOptions = await resolveSaveAsWebpageOptions({
-        tabId: input.tabId,
-        zoteroSaveMode: input?.zoteroSaveMode
-      });
-      const saveResult = await runBridgeCommand({
-        tabId: input.tabId,
-        timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
-        command: [
-          "Messaging.sendMessage",
-          ["saveAsWebpage", [tabPayload.title, saveAsWebpageOptions], tabPayload.id, 0]
-        ]
-      });
+      const saveResult = isEmbeddedMetadataMode(input?.zoteroSaveMode)
+        ? await saveWithEmbeddedMetadataTranslator({
+            tabId: input.tabId,
+            tabPayload
+          })
+        : await runBridgeCommand({
+            tabId: input.tabId,
+            timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
+            command: [
+              "Messaging.sendMessage",
+              ["saveAsWebpage", [tabPayload.title, { snapshot: true }], tabPayload.id, 0]
+            ]
+          });
       if (!saveResult.ok) {
         return createProviderSaveError(`Connector bridge save failed: ${saveResult.error}`);
       }
@@ -335,30 +337,50 @@ function isConnectorUnavailableError(errorMessage) {
   return false;
 }
 
-async function resolveSaveAsWebpageOptions({ tabId, zoteroSaveMode }) {
-  if (zoteroSaveMode === QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA) {
-    const snapshotPreference = await resolveConnectorAutomaticSnapshotPreference(tabId);
+function isEmbeddedMetadataMode(zoteroSaveMode) {
+  return zoteroSaveMode === QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA;
+}
+
+async function saveWithEmbeddedMetadataTranslator({ tabId, tabPayload }) {
+  const tabInfoResult = await runBridgeCommand({
+    tabId,
+    timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
+    command: ["Connector_Browser.getTabInfo", [tabId]]
+  });
+  if (!tabInfoResult.ok) {
     return {
-      snapshot: snapshotPreference
+      ok: false,
+      error: `Unable to read connector tab translator state: ${tabInfoResult.error}`
     };
   }
 
-  return {
-    snapshot: true
-  };
-}
-
-async function resolveConnectorAutomaticSnapshotPreference(tabId) {
-  const preferenceResult = await runBridgeCommand({
-    tabId,
-    timeoutMs: BRIDGE_HEALTH_TIMEOUT_MS,
-    command: ["Connector.getPref", ["automaticSnapshots"]]
-  });
-  if (!preferenceResult.ok) {
-    return true;
+  const translatorIndex = findEmbeddedMetadataTranslatorIndex(tabInfoResult.result?.translators);
+  if (translatorIndex < 0) {
+    return {
+      ok: false,
+      error: "Embedded Metadata translator is unavailable for this page."
+    };
   }
 
-  return preferenceResult.result !== false;
+  return runBridgeCommand({
+    tabId,
+    timeoutMs: BRIDGE_SAVE_TIMEOUT_MS,
+    command: [
+      "Connector_Browser.saveWithTranslator",
+      [tabPayload, translatorIndex, { fallbackOnFailure: false }]
+    ]
+  });
+}
+
+function findEmbeddedMetadataTranslatorIndex(translators) {
+  if (!Array.isArray(translators) || translators.length === 0) {
+    return -1;
+  }
+
+  return translators.findIndex((translator) => {
+    const label = typeof translator?.label === "string" ? translator.label.trim().toLowerCase() : "";
+    return label === EMBEDDED_METADATA_TRANSLATOR_LABEL;
+  });
 }
 
 async function runBridgeCommand({ tabId, timeoutMs, command }) {

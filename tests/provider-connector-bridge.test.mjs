@@ -114,8 +114,8 @@ test("connector bridge saveWebPageWithSnapshot runs injection, online check, the
   ]);
 });
 
-test("connector bridge saveWebPageWithSnapshot supports Embedded Metadata mode and honors snapshot pref", async (t) => {
-  let observedSaveCommandArgs = null;
+test("connector bridge saveWebPageWithSnapshot uses Embedded Metadata translator when configured", async (t) => {
+  let observedTranslatorSaveArgs = null;
   const chromeMock = installBridgeChromeMock({
     executeScriptResponder: async ({ commandName, commandArgs }) => {
       if (commandName === "Connector_Browser.injectTranslationScripts") {
@@ -124,11 +124,19 @@ test("connector bridge saveWebPageWithSnapshot supports Embedded Metadata mode a
       if (commandName === "Connector.checkIsOnline") {
         return { ok: true, result: true };
       }
-      if (commandName === "Connector.getPref") {
-        return { ok: true, result: false };
+      if (commandName === "Connector_Browser.getTabInfo") {
+        return {
+          ok: true,
+          result: {
+            translators: [
+              { label: "DOI" },
+              { label: "Embedded Metadata" }
+            ]
+          }
+        };
       }
-      if (commandName === "Messaging.sendMessage") {
-        observedSaveCommandArgs = commandArgs;
+      if (commandName === "Connector_Browser.saveWithTranslator") {
+        observedTranslatorSaveArgs = commandArgs;
         return { ok: true, result: { ok: true } };
       }
       return { ok: false, error: `Unexpected command: ${String(commandName)}` };
@@ -148,11 +156,10 @@ test("connector bridge saveWebPageWithSnapshot supports Embedded Metadata mode a
   });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(observedSaveCommandArgs, [
-    "saveAsWebpage",
-    ["Article", { snapshot: false }],
-    31,
-    0
+  assert.deepEqual(observedTranslatorSaveArgs, [
+    { id: 31, title: "Article", url: "https://example.com/article" },
+    1,
+    { fallbackOnFailure: false }
   ]);
 });
 
@@ -182,22 +189,22 @@ test("connector bridge saveWebPageWithSnapshot fails when connector reports offl
   assert.match(result.error, /offline for bridge save/i);
 });
 
-test("connector bridge embedded mode defaults to snapshot when pref lookup fails", async (t) => {
-  let observedSaveCommandArgs = null;
+test("connector bridge embedded mode fails when Embedded Metadata translator is unavailable", async (t) => {
   const chromeMock = installBridgeChromeMock({
-    executeScriptResponder: async ({ commandName, commandArgs }) => {
+    executeScriptResponder: async ({ commandName }) => {
       if (commandName === "Connector_Browser.injectTranslationScripts") {
         return { ok: true, result: true };
       }
       if (commandName === "Connector.checkIsOnline") {
         return { ok: true, result: true };
       }
-      if (commandName === "Connector.getPref") {
-        return { ok: false, error: "pref lookup failed" };
-      }
-      if (commandName === "Messaging.sendMessage") {
-        observedSaveCommandArgs = commandArgs;
-        return { ok: true, result: { ok: true } };
+      if (commandName === "Connector_Browser.getTabInfo") {
+        return {
+          ok: true,
+          result: {
+            translators: [{ label: "DOI" }]
+          }
+        };
       }
       return { ok: false, error: "Unexpected command." };
     },
@@ -213,13 +220,8 @@ test("connector bridge embedded mode defaults to snapshot when pref lookup fails
     zoteroSaveMode: QUEUE_ZOTERO_SAVE_MODES.EMBEDDED_METADATA
   });
 
-  assert.equal(result.ok, true);
-  assert.deepEqual(observedSaveCommandArgs, [
-    "saveAsWebpage",
-    ["Default Case", { snapshot: true }],
-    41,
-    0
-  ]);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /embedded metadata translator is unavailable/i);
 });
 
 test("connector bridge saveWebPageWithSnapshot fails when preparation step fails", async (t) => {
