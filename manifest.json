@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Zotero Archivist",
+  "name": "Webpage Archivist",
   "description": "Collect links from the active page for Zotero archival workflows.",
   "version": "0.0.1",
   "permissions": [
@@ -31,7 +31,7 @@
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     },
-    "default_title": "Open Zotero Archivist"
+    "default_title": "Open Webpage Archivist"
   },
   "side_panel": {
     "default_path": "sidepanel/panel.html"

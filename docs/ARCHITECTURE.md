@@ -1,7 +1,7 @@
-# Zotero Archivist Architecture (As Implemented)
+# Webpage Archivist Architecture
 
 ## 1. Purpose and Scope
-This document describes the current architecture of Zotero Archivist as implemented in the repository.
+This document describes the current architecture of Webpage Archivist as implemented in the repository.
 
 Scope includes:
 - Runtime surfaces and component boundaries.
@@ -13,7 +13,7 @@ Scope includes:
 This document is architectural reference, not an implementation plan.
 
 ## 2. System Overview
-Zotero Archivist is a Manifest V3 Chromium extension with four primary runtime surfaces:
+Webpage Archivist is a Manifest V3 Chromium extension with four primary runtime surfaces:
 
 1. Side panel UI (`sidepanel/`)
 2. Background service worker (`background/service-worker.js`)
